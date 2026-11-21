@@ -5,9 +5,10 @@ import { createPersistentList } from './store';
 //   { id: '<date>_<employeeId>', date: 'YYYY-MM-DD', employeeId, status,
 //     inTime: 'HH:MM' | '', outTime: 'HH:MM' | '', remark, updatedAt,
 //     locations: [{ latitude, longitude, accuracy, mocked, capturedAt, action }] }
-// Times are typed by the employee in 24-hour format. `locations` logs where the device was
-// every time the entry was saved (captured automatically; required for Present / Half Day),
-// so the admin can see whether attendance was filled in at the office.
+// In/Out times come only from the Punch In / Punch Out buttons (the device clock at the moment
+// of the tap, also kept as inAt / outAt timestamps) — employees can't type or change them.
+// `locations` logs where the device was on every punch/save (captured automatically; required
+// for Present / Half Day), so the admin can see whether attendance was filled in at the office.
 
 export const STATUS = {
   present: { label: 'Present', short: 'P', color: '#1E7B4A', bg: '#E3F4EA', needsTime: true, icon: 'check-circle' },
@@ -135,32 +136,29 @@ export function formatDuration(minutes) {
 // Actions. Return an error message string, or null on success.
 
 // `location` comes from geo.getCurrentLocation(); it is required for Present / Half Day.
-export async function saveAttendance(employeeId, date, { status, inTime, outTime, remark, location }) {
+export async function saveAttendance(employeeId, date, { status, remark, location }) {
   if (!isEditableDate(date)) return "Only today's attendance can be filled in or changed.";
   const info = STATUS[status];
   if (!info) return 'Please select a status.';
 
-  let inT = '';
-  let outT = '';
-  if (info.needsTime) {
-    if (!(inTime ?? '').trim()) return 'Please enter the In time.';
-    inT = parseTime(inTime);
-    if (!inT) return 'In time is not valid. Use 24-hour format, e.g. 09:00';
-    // Out time is optional: employees save their In time on arrival and add Out when leaving.
-    if ((outTime ?? '').trim()) {
-      outT = parseTime(outTime);
-      if (!outT) return 'Out time is not valid. Use 24-hour format, e.g. 18:00';
-      if (inT === outT) return 'In time and Out time cannot be the same.';
-    }
-  }
-
-  if (info.needsTime && !location) {
-    return 'Your location is needed to mark yourself present. Please allow location and try again.';
-  }
-
   const list = await store.get();
   const id = recordId(date, employeeId);
   const previous = list.find((r) => r.id === id);
+
+  // In/Out times are never typed: they only come from Punch In / Punch Out (the clock at the
+  // moment of the tap). Saving Present / Half Day here just keeps the punched times.
+  let inT = '';
+  let outT = '';
+  if (info.needsTime) {
+    if (!previous?.inTime) return 'Tap “Punch In” to record your arrival time.';
+    inT = previous.inTime;
+    outT = previous.outTime ?? '';
+    if (!location) {
+      return 'Your location is needed to mark yourself present. Please allow location and try again.';
+    }
+  } else if (previous?.inTime) {
+    return `You already punched in at ${previous.inTime} today, so you can't change to ${info.label}.`;
+  }
   // What this save did, so the admin can see where In and Out were each recorded.
   const action = !previous
     ? 'created'
@@ -173,6 +171,7 @@ export async function saveAttendance(employeeId, date, { status, inTime, outTime
   ].slice(-MAX_LOCATIONS);
 
   const record = {
+    ...previous, // keeps inAt / outAt punch timestamps
     id,
     date,
     employeeId,
@@ -188,6 +187,64 @@ export async function saveAttendance(employeeId, date, { status, inTime, outTime
 
 const MAX_LOCATIONS = 20;
 
+// Current time as 'HH:MM' (24-hour, device clock).
+const nowHHMM = (d = new Date()) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+// Punch In: records the arrival time from the clock (not typed) plus location, for today.
+// status must be Present or Half Day. Returns an error message, or null on success.
+export async function punchIn(employeeId, { status, remark, location }) {
+  const date = toDateKey();
+  const info = STATUS[status];
+  if (!info?.needsTime) return 'Select Present or Half Day to punch in.';
+  if (!location) {
+    return 'Your location is needed to punch in. Please allow location and try again.';
+  }
+  const list = await store.get();
+  const id = recordId(date, employeeId);
+  const previous = list.find((r) => r.id === id);
+  if (previous?.inTime) return `You already punched in at ${previous.inTime} today.`;
+
+  const now = new Date();
+  const record = {
+    id,
+    date,
+    employeeId,
+    status,
+    inTime: nowHHMM(now),
+    inAt: now.toISOString(),
+    outTime: '',
+    remark: (remark ?? '').trim().slice(0, 200),
+    locations: [...(previous?.locations ?? []), { ...location, action: 'in' }].slice(-MAX_LOCATIONS),
+    updatedAt: now.toISOString(),
+  };
+  return store.save([...list.filter((r) => r.id !== id), record]);
+}
+
+// Punch Out: records the leaving time from the clock plus location, for today.
+export async function punchOut(employeeId, { remark, location }) {
+  const date = toDateKey();
+  if (!location) {
+    return 'Your location is needed to punch out. Please allow location and try again.';
+  }
+  const list = await store.get();
+  const id = recordId(date, employeeId);
+  const previous = list.find((r) => r.id === id);
+  if (!previous?.inTime) return 'Punch in first.';
+  if (previous.outTime) return `You already punched out at ${previous.outTime} today.`;
+
+  const now = new Date();
+  const record = {
+    ...previous,
+    outTime: nowHHMM(now),
+    outAt: now.toISOString(),
+    remark: remark == null ? previous.remark : remark.trim().slice(0, 200),
+    locations: [...(previous.locations ?? []), { ...location, action: 'out' }].slice(-MAX_LOCATIONS),
+    updatedAt: now.toISOString(),
+  };
+  return store.save([...list.filter((r) => r.id !== id), record]);
+}
+
 // First location recorded for the day (when the employee first filled it in) and the latest.
 export function entryLocations(record) {
   const list = record?.locations ?? [];
@@ -198,6 +255,8 @@ export async function clearAttendance(employeeId, date) {
   if (!isEditableDate(date)) return "Only today's attendance can be changed.";
   const list = await store.get();
   const id = recordId(date, employeeId);
+  // Punch times are a record of when the employee arrived; they can't be wiped and re-done.
+  if (list.find((r) => r.id === id)?.inTime) return "Punched times can't be cleared.";
   return store.save(list.filter((r) => r.id !== id));
 }
 

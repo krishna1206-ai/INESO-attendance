@@ -9,90 +9,98 @@ import {
   formatDuration,
   isEditableDate,
   isOvernight,
-  parseTime,
+  punchIn,
+  punchOut,
   saveAttendance,
   workedMinutes,
 } from '../../data/attendance';
 import { getCurrentLocation } from '../../data/geo';
 import { COLORS } from '../../theme';
 
-// The employee's entry for one day: status, In/Out time (typed, 24-hour), remark, Save.
+const clock = (d) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+// The employee's entry for today: status, Punch In / Punch Out (time taken from the clock,
+// never typed), remark. Absent / Leave / Holiday are saved with the Save button instead.
 export default function AttendanceEntry({ employeeId, date, record }) {
   const [status, setStatus] = useState('');
-  const [inTime, setInTime] = useState('');
-  const [outTime, setOutTime] = useState('');
   const [remark, setRemark] = useState('');
   const [error, setError] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
-  const [locating, setLocating] = useState(false);
+  const [busy, setBusy] = useState(null); // null | 'locating' | 'saving'
+  const [justSaved, setJustSaved] = useState(null); // message shown after a successful action
+  const [now, setNow] = useState(new Date());
 
   // Load the saved entry whenever the day (or the saved entry) changes.
   useEffect(() => {
     setStatus(record?.status ?? '');
-    setInTime(record?.inTime ?? '');
-    setOutTime(record?.outTime ?? '');
     setRemark(record?.remark ?? '');
     setError(null);
   }, [date, record?.updatedAt]);
 
-  // "✓ Saved" belongs to the day it was saved on. (Not reset on updatedAt changes, or our
-  // own save would immediately clear it.)
+  // "✓ Saved" belongs to the day it was saved on.
   useEffect(() => {
-    setJustSaved(false);
+    setJustSaved(null);
   }, [date]);
+
+  // Live clock shown on the punch button.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 15000);
+    return () => clearInterval(t);
+  }, []);
 
   // Past days are read-only (future days can't be reached from the day picker).
   if (!isEditableDate(date)) return <LockedDay record={record} />;
 
   const info = STATUS[status];
+  const punchedIn = Boolean(record?.inTime);
+  const punchedOut = Boolean(record?.outTime);
   const lastLocation = entryLocations(record).last;
-  const parsedIn = parseTime(inTime);
-  const parsedOut = parseTime(outTime);
-  const minutes = info?.needsTime && parsedIn && parsedOut && parsedIn !== parsedOut
-    ? workedMinutes(parsedIn, parsedOut)
-    : null;
+  const minutes = punchedIn && punchedOut ? workedMinutes(record.inTime, record.outTime) : null;
 
-  const dirty =
-    status !== (record?.status ?? '') ||
-    (info?.needsTime && (inTime !== (record?.inTime ?? '') || outTime !== (record?.outTime ?? ''))) ||
-    remark !== (record?.remark ?? '');
+  const dirty = status !== (record?.status ?? '') || remark !== (record?.remark ?? '');
+  // The Save button is for Absent / Leave / Holiday, and for changing the remark or switching
+  // between Present / Half Day after punching in.
+  const showSave = status && (!info?.needsTime || punchedIn);
 
   const touch = () => {
     setError(null);
-    setJustSaved(false);
+    setJustSaved(null);
   };
 
-  // Location is captured automatically on every save. It is required for Present / Half Day;
+  // Every action reads the location first. It is required for Present / Half Day punches;
   // for Absent / Leave / Holiday it is recorded when available but never blocks the save.
-  const handleSave = async () => {
-    setError(null);
-    setSaving(true);
-    setLocating(true);
+  const run = async (action, successText, locationRequired) => {
+    touch();
+    setBusy('locating');
     const { location, error: locationError } = await getCurrentLocation();
-    setLocating(false);
-    if (!location && info?.needsTime) {
-      setSaving(false);
+    if (!location && locationRequired) {
+      setBusy(null);
       setError(locationError);
       return;
     }
-    const message = await saveAttendance(employeeId, date, { status, inTime, outTime, remark, location });
-    setSaving(false);
+    setBusy('saving');
+    const message = await action(location);
+    setBusy(null);
     if (message) setError(message);
-    else setJustSaved(true);
+    else setJustSaved(successText);
   };
+
+  const handlePunchIn = () =>
+    run((location) => punchIn(employeeId, { status, remark, location }), 'Punched in', true);
+  const handlePunchOut = () =>
+    run((location) => punchOut(employeeId, { remark, location }), 'Punched out', true);
+  const handleSave = () =>
+    run(
+      (location) => saveAttendance(employeeId, date, { status, remark, location }),
+      'Saved',
+      Boolean(info?.needsTime)
+    );
 
   const handleClear = async () => {
-    setSaving(true);
+    setBusy('saving');
     const message = await clearAttendance(employeeId, date);
-    setSaving(false);
+    setBusy(null);
     if (message) setError(message);
-  };
-
-  // Tidy "905" into "09:05" when the field loses focus.
-  const tidy = (value, set) => {
-    const p = parseTime(value);
-    if (p) set(p);
   };
 
   return (
@@ -102,9 +110,12 @@ export default function AttendanceEntry({ employeeId, date, record }) {
         {STATUS_ORDER.map((key) => {
           const s = STATUS[key];
           const active = status === key;
+          // Once punched in, the day can only be Present or Half Day.
+          const locked = punchedIn && !s.needsTime;
           return (
             <Pressable
               key={key}
+              disabled={locked}
               onPress={() => {
                 setStatus(key);
                 touch();
@@ -112,9 +123,10 @@ export default function AttendanceEntry({ employeeId, date, record }) {
               style={[
                 styles.status,
                 { borderColor: active ? s.color : COLORS.border, backgroundColor: active ? s.color : s.bg },
+                locked && styles.statusLocked,
               ]}
               accessibilityRole="radio"
-              accessibilityState={{ selected: active }}
+              accessibilityState={{ selected: active, disabled: locked }}
               accessibilityLabel={`Status ${s.label}`}
             >
               <MaterialCommunityIcons name={s.icon} size={18} color={active ? COLORS.white : s.color} />
@@ -126,40 +138,47 @@ export default function AttendanceEntry({ employeeId, date, record }) {
 
       {info?.needsTime ? (
         <>
+          {/* Punched times (read-only) */}
           <View style={styles.times}>
-            <TimeField
-              label="IN TIME"
-              icon="clock-in"
-              value={inTime}
-              onChange={(t) => {
-                setInTime(t);
-                touch();
-              }}
-              onBlur={() => tidy(inTime, setInTime)}
-              placeholder="09:00"
-            />
-            <TimeField
-              label="OUT TIME"
-              icon="clock-out"
-              value={outTime}
-              onChange={(t) => {
-                setOutTime(t);
-                touch();
-              }}
-              onBlur={() => tidy(outTime, setOutTime)}
-              placeholder="18:00"
-            />
+            <TimeBox label="IN TIME" icon="clock-in" value={record?.inTime} />
+            <TimeBox label="OUT TIME" icon="clock-out" value={record?.outTime} />
           </View>
-          <Text style={styles.hint}>
-            24-hour format, e.g. 09:00 and 18:30. Save your In time on arrival and add the Out time
-            before you leave today.
-            {minutes != null ? (
-              <Text style={styles.hours}>
-                {'  '}Worked: {formatDuration(minutes)}
-                {isOvernight(parsedIn, parsedOut) ? ' (out next day)' : ''}
+
+          {!punchedIn ? (
+            <PunchButton
+              label="Punch In"
+              icon="login"
+              color="#1E7B4A"
+              now={now}
+              busy={busy}
+              onPress={handlePunchIn}
+            />
+          ) : !punchedOut ? (
+            <PunchButton
+              label="Punch Out"
+              icon="logout"
+              color={COLORS.orange}
+              now={now}
+              busy={busy}
+              onPress={handlePunchOut}
+            />
+          ) : (
+            <View style={styles.doneBox}>
+              <MaterialCommunityIcons name="check-decagram" size={20} color="#1E7B4A" />
+              <Text style={styles.doneText}>
+                Day complete · Worked {formatDuration(minutes)}
+                {isOvernight(record.inTime, record.outTime) ? ' (out next day)' : ''}
               </Text>
-            ) : null}
-          </Text>
+            </View>
+          )}
+
+          <View style={styles.locationNote}>
+            <MaterialCommunityIcons name="shield-check-outline" size={16} color={COLORS.body} />
+            <Text style={styles.locationNoteText}>
+              The time is taken from the clock when you tap, and your location is recorded. Times
+              can't be typed or changed.
+            </Text>
+          </View>
         </>
       ) : null}
 
@@ -192,27 +211,18 @@ export default function AttendanceEntry({ employeeId, date, record }) {
         </View>
       ) : null}
 
-      {info?.needsTime ? (
-        <View style={styles.locationNote}>
-          <MaterialCommunityIcons name="map-marker-outline" size={16} color={COLORS.body} />
-          <Text style={styles.locationNoteText}>
-            Your location is recorded automatically when you save.
-          </Text>
-        </View>
-      ) : null}
-
       <View style={styles.footer}>
         <View style={{ flexShrink: 1 }}>
           <Text style={styles.savedText}>
-            {locating
+            {busy === 'locating'
               ? 'Getting your location…'
               : justSaved
-                ? '✓ Saved'
+                ? `✓ ${justSaved}`
                 : record
                   ? `Last saved ${new Date(record.updatedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
                   : 'Not filled yet'}
           </Text>
-          {!locating && lastLocation ? (
+          {busy !== 'locating' && lastLocation ? (
             <Text style={styles.locationSaved}>
               📍 Location recorded
               {lastLocation.accuracy != null ? ` (±${lastLocation.accuracy} m)` : ''}
@@ -220,27 +230,72 @@ export default function AttendanceEntry({ employeeId, date, record }) {
           ) : null}
         </View>
         <View style={styles.buttons}>
-          {record ? (
-            <Pressable onPress={handleClear} disabled={saving} style={[styles.button, styles.clear]}>
+          {record && !punchedIn ? (
+            <Pressable onPress={handleClear} disabled={Boolean(busy)} style={[styles.button, styles.clear]}>
               <Text style={styles.clearText}>Clear</Text>
             </Pressable>
           ) : null}
-          <Pressable
-            onPress={handleSave}
-            disabled={saving || !status || !dirty}
-            style={[styles.button, styles.save, (!status || !dirty) && styles.saveDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel="Save attendance"
-          >
-            {saving ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.saveText}>{record ? 'Update' : 'Save'}</Text>
-            )}
-          </Pressable>
+          {showSave ? (
+            <Pressable
+              onPress={handleSave}
+              disabled={Boolean(busy) || !dirty}
+              style={[styles.button, styles.save, !dirty && styles.saveDisabled]}
+              accessibilityRole="button"
+              accessibilityLabel="Save attendance"
+            >
+              {busy && !info?.needsTime ? (
+                <ActivityIndicator color={COLORS.white} />
+              ) : (
+                <Text style={styles.saveText}>{record ? 'Update' : 'Save'}</Text>
+              )}
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </View>
+  );
+}
+
+function TimeBox({ label, icon, value }) {
+  return (
+    <View style={styles.timeField}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={[styles.timeBox, value && styles.timeBoxFilled]}>
+        <MaterialCommunityIcons name={icon} size={20} color={value ? COLORS.navy : COLORS.muted} />
+        <Text style={[styles.timeValue, !value && styles.timeEmpty]}>{value || '--:--'}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PunchButton({ label, icon, color, now, busy, onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={Boolean(busy)}
+      style={({ pressed }) => [
+        styles.punch,
+        { backgroundColor: color },
+        (pressed || busy) && { opacity: 0.85 },
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      {busy ? (
+        <>
+          <ActivityIndicator color={COLORS.white} />
+          <Text style={styles.punchText}>{busy === 'locating' ? 'Getting location…' : 'Saving…'}</Text>
+        </>
+      ) : (
+        <>
+          <MaterialCommunityIcons name={icon} size={24} color={COLORS.white} />
+          <Text style={styles.punchText}>{label}</Text>
+          <View style={styles.punchClock}>
+            <Text style={styles.punchClockText}>{clock(now)}</Text>
+          </View>
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -298,28 +353,6 @@ function LockedValue({ label, value }) {
   );
 }
 
-function TimeField({ label, icon, value, onChange, onBlur, placeholder }) {
-  return (
-    <View style={styles.timeField}>
-      <Text style={styles.label}>{label}</Text>
-      <View style={styles.timeInputRow}>
-        <MaterialCommunityIcons name={icon} size={20} color={COLORS.navy} style={{ marginLeft: 12 }} />
-        <TextInput
-          value={value}
-          onChangeText={onChange}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          placeholderTextColor={COLORS.muted}
-          style={styles.timeInput}
-          keyboardType="numbers-and-punctuation"
-          maxLength={5}
-          accessibilityLabel={label === 'IN TIME' ? 'In time' : 'Out time'}
-        />
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.white,
@@ -372,30 +405,57 @@ const styles = StyleSheet.create({
   },
   statusText: { fontSize: 14, fontWeight: '700' },
 
-  times: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, marginTop: 20 },
-  // minWidth 0 lets the fields shrink below a web <input>'s default width on narrow phones.
-  timeField: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 0 },
-  timeInputRow: {
+  statusLocked: { opacity: 0.35 },
+
+  times: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  timeField: { flex: 1, minWidth: 0 },
+  timeBox: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderStyle: 'dashed',
     borderRadius: 4,
-    backgroundColor: COLORS.white,
-  },
-  timeInput: {
-    flex: 1,
-    minWidth: 0,
-    width: '100%',
-    paddingHorizontal: 10,
+    backgroundColor: COLORS.pageBg,
+    paddingHorizontal: 12,
     paddingVertical: 12,
-    fontSize: 20,
-    fontWeight: '600',
-    color: COLORS.text,
-    letterSpacing: 1,
   },
+  timeBoxFilled: { borderStyle: 'solid', backgroundColor: COLORS.white },
+  timeValue: { fontSize: 22, fontWeight: '700', color: COLORS.text, letterSpacing: 1 },
+  timeEmpty: { color: COLORS.muted },
+
+  punch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 999,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginTop: 16,
+    minHeight: 60,
+  },
+  punchText: { color: COLORS.white, fontSize: 20, fontWeight: '800' },
+  punchClock: {
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  punchClockText: { color: COLORS.white, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
+  doneBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E3F4EA',
+    borderRadius: 4,
+    padding: 14,
+    marginTop: 16,
+  },
+  doneText: { color: '#1E7B4A', fontSize: 15, fontWeight: '700', flexShrink: 1 },
+
   hint: { fontSize: 13, color: COLORS.body, marginTop: 10 },
-  hours: { color: COLORS.text, fontWeight: '700' },
   input: {
     borderWidth: 1,
     borderColor: COLORS.border,
