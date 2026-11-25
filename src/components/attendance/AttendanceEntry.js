@@ -16,6 +16,7 @@ import {
 } from '../../data/attendance';
 import { getCurrentLocation } from '../../data/geo';
 import { COLORS } from '../../theme';
+import LateBadge from '../admin/LateBadge';
 
 const clock = (d) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -143,6 +144,11 @@ export default function AttendanceEntry({ employeeId, date, record }) {
             <TimeBox label="IN TIME" icon="clock-in" value={record?.inTime} />
             <TimeBox label="OUT TIME" icon="clock-out" value={record?.outTime} />
           </View>
+          {record?.lateMinutes > 0 ? (
+            <View style={{ marginTop: 10 }}>
+              <LateBadge minutes={record.lateMinutes} />
+            </View>
+          ) : null}
 
           {!punchedIn ? (
             <PunchButton
@@ -329,6 +335,11 @@ function LockedDay({ record }) {
                   value={`${formatDuration(mins)}${isOvernight(record.inTime, record.outTime) ? ' (next day)' : ''}`}
                 />
               ) : null}
+            </View>
+          ) : null}
+          {record.lateMinutes > 0 ? (
+            <View style={{ marginTop: 12 }}>
+              <LateBadge minutes={record.lateMinutes} />
             </View>
           ) : null}
 

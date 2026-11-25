@@ -18,11 +18,12 @@ export const WEEKDAYS = [
 ];
 
 const TABLES = ['holidays', 'calendar'];
-const EMPTY = { weeklyOffs: [0], holidays: [] };
+export const DEFAULT_SHIFT = { start: '09:00', end: '18:00', grace: 10 };
+const EMPTY = { weeklyOffs: [0], holidays: [], shift: DEFAULT_SHIFT };
 
 async function fetchCalendar() {
   const [cal, hol] = await Promise.all([
-    db().from('calendar').select('weekly_offs').eq('id', 'default').maybeSingle(),
+    db().from('calendar').select('*').eq('id', 'default').maybeSingle(),
     db().from('holidays').select('id, date, name').order('date'),
   ]);
   if (cal.error) throw cal.error;
@@ -30,7 +31,40 @@ async function fetchCalendar() {
   return {
     weeklyOffs: (cal.data?.weekly_offs ?? [0]).map(Number),
     holidays: hol.data.map((h) => ({ id: h.id, date: h.date, name: h.name })),
+    // Company shift (supabase/shift_and_leave.sql). Punch In after start + grace is Late.
+    shift: {
+      start: cal.data?.shift_start ?? DEFAULT_SHIFT.start,
+      end: cal.data?.shift_end ?? DEFAULT_SHIFT.end,
+      grace: cal.data?.grace_minutes ?? DEFAULT_SHIFT.grace,
+    },
   };
+}
+
+// Saves the company shift. start / end: 'HH:MM' (24-hour), grace: minutes.
+export async function saveShift({ start, end, grace }) {
+  const s = parseTime(start);
+  const e = parseTime(end);
+  const g = Number(String(grace).trim());
+  if (!s) return 'Shift start is not valid. Use 24-hour format, e.g. 09:00';
+  if (!e) return 'Shift end is not valid. Use 24-hour format, e.g. 18:00';
+  if (s === e) return 'Shift start and end cannot be the same.';
+  if (!Number.isInteger(g) || g < 0 || g > 180) return 'Grace must be a whole number of minutes between 0 and 180.';
+  const { error } = await db().from('calendar').upsert({
+    id: 'default',
+    shift_start: s,
+    shift_end: e,
+    grace_minutes: g,
+    updated_at: new Date().toISOString(),
+  });
+  if (error) return errorMessage(error);
+  invalidate(...TABLES);
+  return null;
+}
+
+// Same rules as attendance.parseTime (kept here to avoid a circular import).
+function parseTime(text) {
+  const m = (text ?? '').trim().match(/^([01]?\d|2[0-3]):?([0-5]\d)$/);
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
 }
 
 // { calendar: { weeklyOffs, holidays }, loading }

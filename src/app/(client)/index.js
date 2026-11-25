@@ -5,6 +5,9 @@ import Screen from '../../components/Screen';
 import { dayInfo, useCalendar } from '../../data/calendar';
 import AttendanceEntry from '../../components/attendance/AttendanceEntry';
 import { Avatar } from '../../components/admin/ui';
+import LateBadge from '../../components/admin/LateBadge';
+import MyLeaves from '../../components/leave/MyLeaves';
+import { useLeaveRequests } from '../../data/leave';
 import { useSession } from '../../data/session';
 import { useDepartments } from '../../data/departments';
 import { describeEmployee } from '../../data/employees';
@@ -12,6 +15,9 @@ import {
   STATUS,
   STATUS_ORDER,
   DAY_KIND,
+  LATE_STYLE,
+  daysOfMonth,
+  offDayFor,
   summariseMonth,
   formatDateKey,
   formatDuration,
@@ -30,6 +36,7 @@ export default function MyAttendance() {
   const { departments } = useDepartments();
   const { byDate, loading } = useEmployeeAttendance(employee?.id);
   const { calendar } = useCalendar();
+  const { requests: leaveRequests } = useLeaveRequests(); // only this employee's own
   const today = toDateKey();
   const [date, setDate] = useState(today);
   const { width } = useWindowDimensions();
@@ -39,17 +46,21 @@ export default function MyAttendance() {
   const { departmentName, subDepartmentName } = describeEmployee(employee, departments);
 
   const month = date.slice(0, 7);
-  // History: this month's entries plus company holidays (so far) the employee didn't work.
-  const holidayRows = calendar.holidays
-    .filter((h) => h.date.startsWith(month) && h.date <= today && !byDate[h.date])
-    .map((h) => ({ id: `holiday-${h.date}`, date: h.date, holiday: h.name }));
+  const approved = leaveRequests.filter((r) => r.status === 'approved');
+  // History: this month's entries plus days (so far) without an entry that were a company
+  // holiday or approved leave.
+  const offRows = daysOfMonth(month)
+    .filter((d) => !byDate[d])
+    .map((d) => ({ date: d, off: offDayFor(d, calendar, approved) }))
+    .filter((x) => x.off && x.off.kind !== 'weeklyOff')
+    .map((x) => ({ id: `off-${x.date}`, date: x.date, off: x.off }));
   const monthRecords = [
     ...Object.values(byDate).filter((r) => r.date.startsWith(month)),
-    ...holidayRows,
+    ...offRows,
   ].sort((a, b) => b.date.localeCompare(a.date));
-  // Summary counts company holidays as Holiday (see summariseMonth).
-  const { counts, minutes: totalMinutes } = summariseMonth(byDate, month, null, calendar);
-  const offDay = dayInfo(date, calendar);
+  // Summary counts company holidays as Holiday and approved leave as Leave.
+  const { counts, minutes: totalMinutes, late: lateDays } = summariseMonth(byDate, month, null, calendar, approved);
+  const offDay = byDate[date] ? dayInfo(date, calendar) : offDayFor(date, calendar, approved);
 
   return (
     <Screen>
@@ -101,7 +112,9 @@ export default function MyAttendance() {
           <Text style={[styles.offBannerText, { color: DAY_KIND[offDay.kind].color }]}>
             {offDay.kind === 'holiday'
               ? `${date === today ? 'Today is' : 'This was'} a company holiday: ${offDay.name}`
-              : `${date === today ? 'Today is' : 'This was'} a weekly off (${offDay.name})`}
+              : offDay.kind === 'leave'
+                ? `${date === today ? 'You are' : 'You were'} on approved leave (${offDay.name})`
+                : `${date === today ? 'Today is' : 'This was'} a weekly off (${offDay.name})`}
             {date === today ? '. No need to fill in attendance unless you are working today.' : '.'}
           </Text>
         </View>
@@ -113,6 +126,9 @@ export default function MyAttendance() {
         <AttendanceEntry employeeId={employee.id} date={date} record={byDate[date]} />
       )}
 
+      {/* Leave requests */}
+      <MyLeaves requests={leaveRequests} calendar={calendar} />
+
       {/* Month summary */}
       <Text style={styles.sectionTitle}>{formatMonth(date)}</Text>
       <View style={styles.summary}>
@@ -122,6 +138,10 @@ export default function MyAttendance() {
             <Text style={[styles.pillLabel, { color: STATUS[k].color }]}>{STATUS[k].label}</Text>
           </View>
         ))}
+        <View style={[styles.pill, { backgroundColor: LATE_STYLE.bg }]}>
+          <Text style={[styles.pillValue, { color: LATE_STYLE.color }]}>{lateDays}</Text>
+          <Text style={[styles.pillLabel, { color: LATE_STYLE.color }]}>Late</Text>
+        </View>
         <View style={[styles.pill, { backgroundColor: COLORS.chipBg }]}>
           <Text style={[styles.pillValue, { color: COLORS.text }]}>{formatDuration(totalMinutes) || '0h'}</Text>
           <Text style={[styles.pillLabel, { color: COLORS.text }]}>Worked</Text>
@@ -134,8 +154,8 @@ export default function MyAttendance() {
           <Text style={styles.empty}>No entries in {formatMonth(date)} yet.</Text>
         ) : (
           monthRecords.map((r, i) => {
-            const s = r.holiday ? DAY_KIND.holiday : STATUS[r.status];
-            const mins = r.holiday ? null : workedMinutes(r.inTime, r.outTime);
+            const s = r.off ? DAY_KIND[r.off.kind] : STATUS[r.status];
+            const mins = r.off ? null : workedMinutes(r.inTime, r.outTime);
             const selected = r.date === date;
             return (
               <Pressable
@@ -151,9 +171,12 @@ export default function MyAttendance() {
                 <View style={[styles.badge, { backgroundColor: s?.bg ?? COLORS.chipBg }]}>
                   <Text style={[styles.badgeText, { color: s?.color ?? COLORS.text }]}>{s?.label ?? r.status}</Text>
                 </View>
-                <Text style={styles.rowTimes}>
-                  {r.holiday || (r.inTime ? `${r.inTime} – ${r.outTime || '…'}` : r.remark || '—')}
-                </Text>
+                <View style={styles.rowMiddle}>
+                  <Text style={styles.rowTimes}>
+                    {r.off ? r.off.name : r.inTime ? `${r.inTime} – ${r.outTime || '…'}` : r.remark || '—'}
+                  </Text>
+                  {!r.off ? <LateBadge minutes={r.lateMinutes} compact /> : null}
+                </View>
                 <Text style={styles.rowHours}>{mins != null ? formatDuration(mins) : ''}</Text>
               </Pressable>
             );
@@ -229,6 +252,7 @@ const styles = StyleSheet.create({
   rowWeekday: { fontSize: 11, color: COLORS.body, fontWeight: '600' },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, minWidth: 76, alignItems: 'center' },
   badgeText: { fontSize: 12, fontWeight: '700' },
-  rowTimes: { flex: 1, fontSize: 14, color: COLORS.text },
+  rowMiddle: { flex: 1, minWidth: 0, gap: 4 },
+  rowTimes: { fontSize: 14, color: COLORS.text },
   rowHours: { fontSize: 13, color: COLORS.body, fontWeight: '600' },
 });

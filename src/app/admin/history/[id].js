@@ -12,6 +12,7 @@ import {
   STATUS,
   STATUS_ORDER,
   DAY_KIND,
+  offDayFor,
   daysOfMonth,
   formatDateKey,
   formatDuration,
@@ -23,7 +24,9 @@ import {
 } from '../../../data/attendance';
 import { classifyLocation } from '../../../data/geo';
 import { useOffice } from '../../../data/settings';
-import { dayInfo, useCalendar } from '../../../data/calendar';
+import { useCalendar } from '../../../data/calendar';
+import { useLeaveRequests } from '../../../data/leave';
+import LateBadge from '../../../components/admin/LateBadge';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -43,6 +46,7 @@ export default function EmployeeReport() {
   const { byDate } = useEmployeeAttendance(id);
   const { office } = useOffice();
   const { calendar } = useCalendar();
+  const { requests } = useLeaveRequests();
 
   const employee = employees.find((e) => e.id === id);
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/admin/history'));
@@ -64,7 +68,8 @@ export default function EmployeeReport() {
   if (!employee) return <PageBody />;
 
   const { departmentName, subDepartmentName } = describeEmployee(employee, departments);
-  const summary = summariseMonth(byDate, month, (l) => classifyLocation(l, office).kind, calendar);
+  const approved = requests.filter((r) => r.status === 'approved' && r.employeeId === id);
+  const summary = summariseMonth(byDate, month, (l) => classifyLocation(l, office).kind, calendar, approved);
   const days = daysOfMonth(month);
 
   return (
@@ -92,6 +97,7 @@ export default function EmployeeReport() {
           <Tile key={k} label={STATUS[k].label} value={summary.counts[k]} color={STATUS[k].color} bg={STATUS[k].bg} />
         ))}
         <Tile label="Weekly off" value={summary.weeklyOff} color={DAY_KIND.weeklyOff.color} bg={DAY_KIND.weeklyOff.bg} />
+        <Tile label="Late" value={summary.late} color="#C2410C" bg="#FFEDD5" />
         <Tile label="Not filled" value={summary.notFilled} color="#9A5B00" bg="#FFF4E0" />
         <Tile label="Outside office" value={summary.outside} color={COLORS.danger} bg="#FDECEC" />
         <Tile label="Worked" value={formatDuration(summary.minutes) || '0h'} color={COLORS.white} bg={COLORS.navy} />
@@ -115,7 +121,7 @@ export default function EmployeeReport() {
           {days.map((date, i) => {
             const r = byDate[date];
             // A day without an entry is a company holiday, a weekly off, or "Not filled".
-            const off = r ? null : dayInfo(date, calendar);
+            const off = r ? null : offDayFor(date, calendar, approved);
             const s = r ? STATUS[r.status] : off ? DAY_KIND[off.kind] : null;
             const mins = r ? workedMinutes(r.inTime, r.outTime) : null;
             const times = r?.inTime ? `${r.inTime} – ${r.outTime || '…'}` : '—';
@@ -124,7 +130,7 @@ export default function EmployeeReport() {
                 <Text style={[styles.badgeText, { color: s?.color ?? '#9A5B00' }]}>{s?.label ?? 'Not filled'}</Text>
               </View>
             );
-            const remark = r?.remark || (off?.kind === 'holiday' ? off.name : '');
+            const remark = r?.remark || (off?.kind === 'holiday' ? off.name : off?.kind === 'leave' ? `${off.name}: ${off.reason}` : '');
             const locationEl = !r ? null : (
               <PunchLocations record={r} office={office} compact={!asTable} />
             );
@@ -138,7 +144,10 @@ export default function EmployeeReport() {
               <View key={date} style={[styles.tr, i > 0 && styles.trBorder, !r && !off && styles.rowMissing]}>
                 <View style={styles.colDate}>{dateEl}</View>
                 <View style={styles.colStatus}>{statusEl}</View>
-                <Text style={[styles.td, styles.colTime]}>{times}</Text>
+                <View style={[styles.colTime, { gap: 4 }]}>
+                  <Text style={styles.td}>{times}</Text>
+                  <LateBadge minutes={r?.lateMinutes} compact />
+                </View>
                 <Text style={[styles.td, styles.colHours]}>{mins != null ? formatDuration(mins) : '—'}</Text>
                 <View style={styles.colLoc}>{locationEl ?? <Text style={styles.muted}>—</Text>}</View>
                 <Text style={[styles.td, styles.colRemark]} numberOfLines={2}>{remark || '—'}</Text>
@@ -156,6 +165,7 @@ export default function EmployeeReport() {
                           {mins != null ? `  ·  ${formatDuration(mins)}` : ''}
                         </Text>
                       ) : null}
+                      <LateBadge minutes={r?.lateMinutes} compact />
                     </View>
                     {remark ? <Text style={styles.sub}>{remark}</Text> : null}
                     {locationEl}

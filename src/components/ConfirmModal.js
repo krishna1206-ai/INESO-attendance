@@ -4,6 +4,8 @@ import { COLORS } from '../theme';
 
 // Simple confirm dialog. (Alert.alert has no buttons on web, so we use our own.)
 // onConfirm may return a promise; the dialog shows a spinner until it resolves.
+// `children` (optional) render under the message, e.g. a note field. `tone`: 'danger' (red,
+// default) or 'primary' (green) for the confirm button.
 export default function ConfirmModal({
   visible,
   title,
@@ -11,6 +13,8 @@ export default function ConfirmModal({
   confirmLabel = 'Delete',
   onConfirm,
   onCancel,
+  children,
+  tone = 'danger',
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -36,6 +40,7 @@ export default function ConfirmModal({
         <View style={styles.sheet}>
           <Text style={styles.title}>{title}</Text>
           {message ? <Text style={styles.message}>{message}</Text> : null}
+          {children}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <View style={styles.footer}>
             <Pressable onPress={onCancel} style={[styles.button, styles.cancel]}>
@@ -44,7 +49,7 @@ export default function ConfirmModal({
             <Pressable
               onPress={handleConfirm}
               disabled={busy}
-              style={[styles.button, styles.danger]}
+              style={[styles.button, styles.danger, tone === 'primary' && { backgroundColor: '#1E7B4A' }]}
             >
               {busy ? (
                 <ActivityIndicator color={COLORS.white} />

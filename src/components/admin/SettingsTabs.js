@@ -8,6 +8,7 @@ import { COLORS } from '../../theme';
 export const SETTINGS_PAGES = [
   { href: '/admin/settings', label: 'Office location', icon: 'map-marker-radius-outline' },
   { href: '/admin/settings/holidays', label: 'Holidays', icon: 'party-popper' },
+  { href: '/admin/settings/shift', label: 'Shift timing', icon: 'clock-time-nine-outline' },
 ];
 
 export default function SettingsTabs() {

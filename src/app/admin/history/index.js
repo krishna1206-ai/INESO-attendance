@@ -11,6 +11,7 @@ import { formatDuration, monthOf, summariseMonth, toDateKey, useAttendanceForMon
 import { classifyLocation } from '../../../data/geo';
 import { useOffice } from '../../../data/settings';
 import { useCalendar } from '../../../data/calendar';
+import { approvedByEmployee, useLeaveRequests } from '../../../data/leave';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 900;
@@ -28,6 +29,8 @@ export default function AdminHistory() {
   const { byEmployee } = useAttendanceForMonth(month);
   const { office } = useOffice();
   const { calendar } = useCalendar();
+  const { requests } = useLeaveRequests();
+  const approved = approvedByEmployee(requests);
   const classify = (l) => classifyLocation(l, office).kind;
 
   const q = query.trim().toLowerCase();
@@ -35,7 +38,7 @@ export default function AdminHistory() {
     .filter((e) => deptFilter === 'all' || e.departmentId === deptFilter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || (e.email ?? '').includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => ({ employee: e, summary: summariseMonth(byEmployee[e.id] ?? {}, month, classify, calendar) }));
+    .map((e) => ({ employee: e, summary: summariseMonth(byEmployee[e.id] ?? {}, month, classify, calendar, approved[e.id]) }));
 
   const open = (e) => router.push(`/admin/history/${e.id}?month=${month}`);
 
@@ -87,6 +90,7 @@ export default function AdminHistory() {
               <Text style={[styles.th, styles.colNum]}>LEAVE</Text>
               <Text style={[styles.th, styles.colNum]}>NOT FILLED</Text>
               <Text style={[styles.th, styles.colNum]}>OUTSIDE</Text>
+              <Text style={[styles.th, styles.colNum]}>LATE</Text>
               <Text style={[styles.th, styles.colNum]}>WORKED</Text>
               <View style={styles.colGo} />
             </View>
@@ -126,6 +130,7 @@ export default function AdminHistory() {
                     <Text style={[styles.num, styles.colNum, { color: '#6B46C1' }]}>{s.counts.leave}</Text>
                     <Text style={[styles.num, styles.colNum]}>{s.notFilled}</Text>
                     <Text style={[styles.num, styles.colNum, s.outside > 0 && { color: COLORS.danger }]}>{s.outside}</Text>
+                    <Text style={[styles.num, styles.colNum, s.late > 0 && { color: '#C2410C' }]}>{s.late}</Text>
                     <Text style={[styles.num, styles.colNum]}>{formatDuration(s.minutes) || '0h'}</Text>
                     <View style={styles.colGo}>
                       <Feather name="chevron-right" size={18} color={COLORS.muted} />
@@ -143,6 +148,7 @@ export default function AdminHistory() {
                       <Chip label="Leave" value={s.counts.leave} color="#6B46C1" bg="#F1ECFD" />
                       <Chip label="Not filled" value={s.notFilled} color={COLORS.text} bg={COLORS.chipBg} />
                       {s.outside > 0 ? <Chip label="Outside" value={s.outside} color={COLORS.danger} bg="#FDECEC" /> : null}
+                      {s.late > 0 ? <Chip label="Late" value={s.late} color="#C2410C" bg="#FFEDD5" /> : null}
                     </View>
                   </>
                 )}

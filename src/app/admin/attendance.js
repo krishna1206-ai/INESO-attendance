@@ -21,6 +21,8 @@ import {
 import { classifyLocation } from '../../data/geo';
 import { useOffice } from '../../data/settings';
 import { dayInfo, useCalendar } from '../../data/calendar';
+import { LEAVE_TYPES, approvedByEmployee, leaveOn, useLeaveRequests } from '../../data/leave';
+import LateBadge from '../../components/admin/LateBadge';
 import { COLORS } from '../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -38,6 +40,8 @@ export default function AdminAttendance() {
   const { office } = useOffice();
   const { calendar } = useCalendar();
   const offDay = dayInfo(date, calendar);
+  const { requests } = useLeaveRequests();
+  const approved = approvedByEmployee(requests);
 
   const rows = [...employees]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -45,11 +49,15 @@ export default function AdminAttendance() {
       const record = byEmployee[e.id] ?? null;
       // "Outside" when the punch in or punch out was made away from the office.
       const outside = Boolean(record) && punchedOutsideOffice(record, (l) => classifyLocation(l, office).kind);
-      return { employee: e, record, outside };
+      // No entry but on approved leave that day.
+      const onLeave = !record && !offDay ? leaveOn(date, approved[e.id]) : null;
+      return { employee: e, record, outside, onLeave };
     });
 
   const filled = rows.filter((r) => r.record).length;
   const outsideCount = rows.filter((r) => r.outside).length;
+  const lateCount = rows.filter((r) => r.record?.lateMinutes > 0).length;
+  const leaveCount = rows.filter((r) => r.onLeave).length;
   const visible = onlyOutside ? rows.filter((r) => r.outside) : rows;
 
   return (
@@ -101,6 +109,8 @@ export default function AdminAttendance() {
         <View style={styles.summary}>
           <Pill value={`${filled}/${employees.length}`} label="Filled in" color={COLORS.text} bg={COLORS.chipBg} />
           <Pill value={outsideCount} label="Outside office" color={COLORS.danger} bg="#FDECEC" />
+          <Pill value={lateCount} label="Late" color="#C2410C" bg="#FFEDD5" />
+          {leaveCount > 0 ? <Pill value={leaveCount} label="On leave" color="#6B46C1" bg="#F1ECFD" /> : null}
         </View>
         <Pressable
           onPress={() => setOnlyOutside((v) => !v)}
@@ -127,9 +137,10 @@ export default function AdminAttendance() {
               <Text style={[styles.th, styles.colLoc]}>LOCATION</Text>
             </View>
           ) : null}
-          {visible.map(({ employee: e, record }, i) => {
+          {visible.map(({ employee: e, record, onLeave }, i) => {
             // No entry on a holiday / weekly off shows the day type instead of "Not filled".
-            const s = record ? STATUS[record.status] : offDay ? DAY_KIND[offDay.kind] : null;
+            // No entry: holiday / weekly off for everyone, or this employee's approved leave.
+            const s = record ? STATUS[record.status] : offDay ? DAY_KIND[offDay.kind] : onLeave ? DAY_KIND.leave : null;
             const mins = record ? workedMinutes(record.inTime, record.outTime) : null;
             const { departmentName, subDepartmentName } = describeEmployee(e, departments);
             const times = record?.inTime ? `${record.inTime} – ${record.outTime || '…'}` : '—';
@@ -157,8 +168,9 @@ export default function AdminAttendance() {
                 </View>
                 <View style={styles.colStatus}>{statusEl}</View>
                 <View style={styles.colTime}>
-                  <Text style={styles.td}>{times}</Text>
+                  <Text style={styles.td}>{onLeave ? `${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}` : times}</Text>
                   {mins != null ? <Text style={styles.sub}>{formatDuration(mins)}</Text> : null}
+                  <LateBadge minutes={record?.lateMinutes} compact />
                 </View>
                 <View style={styles.colLoc}>{locationEl}</View>
               </View>
@@ -181,7 +193,10 @@ export default function AdminAttendance() {
                     {mins != null ? `  ·  ${formatDuration(mins)}` : ''}
                     {record.remark ? `  ·  ${record.remark}` : ''}
                   </Text>
+                ) : onLeave ? (
+                  <Text style={styles.sub}>{`${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}`}</Text>
                 ) : null}
+                <LateBadge minutes={record?.lateMinutes} />
                 {locationEl}
               </View>
             );

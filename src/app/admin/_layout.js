@@ -5,6 +5,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Slot, router, usePathname } from 'expo-router';
 import { AppHeader, UserMenu } from '../../components/Screen';
 import { useSession } from '../../data/session';
+import { useLeaveRequests } from '../../data/leave';
 import { setMode } from '../../lib/supabase';
 import { COLORS, WIDE_BREAKPOINT } from '../../theme';
 import { SETTINGS_PAGES } from '../../components/admin/SettingsTabs';
@@ -25,6 +26,14 @@ const NAV = [
     short: 'History',
     icon: 'history',
     match: (p) => p.startsWith('/admin/history'),
+  },
+  {
+    href: '/admin/leave',
+    label: 'Leave',
+    short: 'Leave',
+    icon: 'airplane-takeoff',
+    match: (p) => p.startsWith('/admin/leave'),
+    badge: 'pendingLeave', // shows how many requests are waiting
   },
   {
     href: '/admin/departments',
@@ -59,6 +68,9 @@ export default function AdminLayout() {
   const isWide = width >= WIDE_BREAKPOINT;
   const pathname = usePathname();
   const { employee: account, role, loading } = useSession();
+  // Pending leave requests, shown as a badge on the Leave menu item.
+  const { requests: leaveRequests } = useLeaveRequests();
+  const badges = { pendingLeave: leaveRequests.filter((r) => r.status === 'pending').length };
 
   if (loading) {
     return (
@@ -81,12 +93,12 @@ export default function AdminLayout() {
               item.children ? (
                 <SidebarGroup key={item.href} item={item} pathname={pathname} />
               ) : (
-                <SidebarItem key={item.href} item={item} active={item.match(pathname)} />
+                <SidebarItem key={item.href} item={item} active={item.match(pathname)} badge={badges[item.badge]} />
               )
             )}
           </View>
         ) : (
-          // Phones: three equal tabs that always fit (icon above label), no sideways scrolling.
+          // Phones: equal tabs that always fit (icon above label), no sideways scrolling.
           <View style={styles.tabBar}>
             {NAV.map((item) => {
               const active = item.match(pathname);
@@ -109,6 +121,11 @@ export default function AdminLayout() {
                   >
                     {item.short}
                   </Text>
+                  {badges[item.badge] > 0 ? (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>{badges[item.badge]}</Text>
+                    </View>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -176,7 +193,7 @@ function SidebarGroup({ item, pathname }) {
   );
 }
 
-function SidebarItem({ item, active, onPress, right, expanded }) {
+function SidebarItem({ item, active, onPress, right, expanded, badge }) {
   return (
     <Pressable
       onPress={onPress ?? (() => router.navigate(item.href))}
@@ -195,6 +212,11 @@ function SidebarItem({ item, active, onPress, right, expanded }) {
         color={active ? COLORS.white : '#C9D2E3'}
       />
       <Text style={[styles.navText, active && styles.navTextActive, { flex: 1 }]}>{item.label}</Text>
+      {badge > 0 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{badge}</Text>
+        </View>
+      ) : null}
       {right}
     </Pressable>
   );
@@ -271,6 +293,10 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   tabActive: { borderBottomColor: COLORS.orange },
-  tabText: { fontSize: 11, fontWeight: '600', color: COLORS.body },
+  tabText: { fontSize: 10, fontWeight: '600', color: COLORS.body },
+  badge: { minWidth: 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 999, backgroundColor: COLORS.orange, alignItems: 'center' },
+  badgeText: { color: COLORS.white, fontSize: 11, fontWeight: '800' },
+  tabBadge: { position: 'absolute', top: 2, right: '22%', minWidth: 16, paddingHorizontal: 4, borderRadius: 999, backgroundColor: COLORS.orange, alignItems: 'center' },
+  tabBadgeText: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
   tabTextActive: { color: COLORS.navy, fontWeight: '700' },
 });

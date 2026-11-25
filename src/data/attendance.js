@@ -1,6 +1,7 @@
 import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
 import { dayInfo } from './calendar';
+import { LEAVE_TYPES, leaveOn } from './leave';
 
 // Attendance entries, stored in Supabase (table `attendance`). Each employee fills in their own
 // day (the company has no punching machine). One record per employee per day:
@@ -28,7 +29,12 @@ export const EMPLOYEE_STATUS_ORDER = ['present', 'half_day', 'absent', 'leave'];
 export const DAY_KIND = {
   holiday: { label: 'Holiday', color: '#B7791F', bg: '#FEF5E3', icon: 'party-popper' },
   weeklyOff: { label: 'Weekly off', color: '#4A5568', bg: '#E9ECF1', icon: 'calendar-weekend-outline' },
+  // Approved leave request on a day without an attendance entry.
+  leave: { label: 'Leave', color: '#6B46C1', bg: '#F1ECFD', icon: 'airplane' },
 };
+
+// Late badge colours (punch in after shift start + grace).
+export const LATE_STYLE = { color: '#C2410C', bg: '#FFEDD5', icon: 'clock-alert-outline' };
 
 // Employees may only fill in or change TODAY's entry: past days are locked and
 // future days can't be added.
@@ -90,27 +96,45 @@ export function daysOfMonth(month) {
 // `calendar` (see calendar.js): days without an entry that are a company holiday count as
 // Holiday and weekly offs as weeklyOff, not as "Not filled". If someone worked that day,
 // their entry counts as usual.
-export function summariseMonth(byDate, month, classify, calendar) {
+// `leaves`: this employee's approved leave requests (see leave.js); those days count as Leave.
+// `late` counts days punched in after shift start + grace.
+export function summariseMonth(byDate, month, classify, calendar, leaves) {
   const counts = Object.fromEntries(STATUS_ORDER.map((k) => [k, 0]));
   let minutes = 0;
   let notFilled = 0;
   let outside = 0;
   let weeklyOff = 0;
+  let late = 0;
   for (const date of daysOfMonth(month)) {
     const r = byDate[date];
     if (!r) {
-      const day = dayInfo(date, calendar);
+      const day = offDayFor(date, calendar, leaves);
       if (day?.kind === 'holiday') counts.holiday += 1;
       else if (day?.kind === 'weeklyOff') weeklyOff += 1;
+      else if (day?.kind === 'leave') counts.leave += 1;
       else notFilled += 1;
       continue;
     }
     if (counts[r.status] != null) counts[r.status] += 1;
     minutes += workedMinutes(r.inTime, r.outTime) ?? 0;
+    if (r.lateMinutes > 0) late += 1;
     if (classify && punchedOutsideOffice(r, classify)) outside += 1;
   }
-  return { counts, minutes, notFilled, outside, weeklyOff };
+  return { counts, minutes, notFilled, outside, weeklyOff, late };
 }
+
+// Why a day without an attendance entry isn't "Not filled": a company holiday, a weekly off,
+// or approved leave (in that order). Returns { kind, name, label?, reason? } or null.
+export function offDayFor(dateKey, calendar, leaves) {
+  const day = dayInfo(dateKey, calendar);
+  if (day) return day;
+  const leave = leaveOn(dateKey, leaves);
+  if (leave) return { kind: 'leave', name: LEAVE_TYPES[leave.type]?.label ?? 'Leave', reason: leave.reason };
+  return null;
+}
+
+// "25m" / "1h 5m" for a Late badge.
+export const formatLate = (minutes) => (minutes > 0 ? formatDuration(minutes) : '');
 
 // ---------------------------------------------------------------------------
 // Times (24-hour "HH:MM")
@@ -144,6 +168,7 @@ export function formatDuration(minutes) {
   if (minutes == null) return '';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
+  if (h === 0 && m > 0) return `${m}m`; // "40m", not "0h 40m"
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
@@ -215,7 +240,7 @@ export function punchedOutsideOffice(record, classify) {
 // Reading
 
 const COLUMNS =
-  'id, employee_id, date, status, in_time, out_time, in_at, out_at, remark, locations, updated_at';
+  'id, employee_id, date, status, in_time, out_time, in_at, out_at, late_minutes, remark, locations, updated_at';
 
 function mapRow(r) {
   return {
@@ -226,6 +251,7 @@ function mapRow(r) {
     inTime: r.in_time,
     outTime: r.out_time,
     inAt: r.in_at,
+    lateMinutes: r.late_minutes ?? 0,
     outAt: r.out_at,
     remark: r.remark,
     locations: Array.isArray(r.locations) ? r.locations : [],

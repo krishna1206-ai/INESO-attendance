@@ -9,7 +9,9 @@ const HEAD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // A month grid for picking a date. Weekly offs (e.g. every Sunday) are shown in red as "Off"
 // and company holidays in amber, using the company calendar.
 //   month: 'YYYY-MM', onMonthChange(month), selected: 'YYYY-MM-DD' | null, onSelect(dateKey)
-export default function MonthCalendar({ month, onMonthChange, selected, onSelect, calendar }) {
+//   Optional: rangeFrom / rangeTo highlight a span of days (leave requests); minDate dims and
+//   disables earlier days.
+export default function MonthCalendar({ month, onMonthChange, selected, onSelect, calendar, rangeFrom, rangeTo, minDate }) {
   const [y, m] = month.split('-').map(Number);
   const first = new Date(y, m - 1, 1).getDay();
   const daysInMonth = new Date(y, m, 0).getDate();
@@ -47,17 +49,22 @@ export default function MonthCalendar({ month, onMonthChange, selected, onSelect
           {week.map((key, di) => {
             if (!key) return <View key={`e${di}`} style={styles.cell} />;
             const info = dayInfo(key, calendar);
-            const isSelected = key === selected;
+            const isSelected = key === selected || key === rangeFrom || key === rangeTo;
+            const inRange = Boolean(rangeFrom && rangeTo && key > rangeFrom && key < rangeTo);
+            const disabled = Boolean(minDate && key < minDate);
             const isToday = key === today;
             return (
               <Pressable
                 key={key}
                 onPress={() => onSelect(key)}
+                disabled={disabled}
                 style={[
                   styles.cell,
                   info?.kind === 'weeklyOff' && styles.cellOff,
                   info?.kind === 'holiday' && styles.cellHoliday,
                   isToday && styles.cellToday,
+                  inRange && styles.cellInRange,
+                  disabled && styles.cellDisabled,
                   isSelected && styles.cellSelected,
                 ]}
                 accessibilityRole="button"
@@ -143,6 +150,8 @@ const styles = StyleSheet.create({
   cellHoliday: { backgroundColor: '#FEF5E3', borderColor: '#F3D9A6' },
   cellToday: { borderColor: COLORS.blue },
   cellSelected: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
+  cellInRange: { backgroundColor: '#DCE4F7', borderColor: '#DCE4F7' },
+  cellDisabled: { opacity: 0.35 },
   dayNum: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   numOff: { color: COLORS.danger },
   numHoliday: { color: '#B7791F' },
