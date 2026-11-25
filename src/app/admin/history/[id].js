@@ -11,6 +11,7 @@ import { describeEmployee, useEmployees } from '../../../data/employees';
 import {
   STATUS,
   STATUS_ORDER,
+  DAY_KIND,
   daysOfMonth,
   formatDateKey,
   formatDuration,
@@ -22,6 +23,7 @@ import {
 } from '../../../data/attendance';
 import { classifyLocation } from '../../../data/geo';
 import { useOffice } from '../../../data/settings';
+import { dayInfo, useCalendar } from '../../../data/calendar';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -40,6 +42,7 @@ export default function EmployeeReport() {
   const { employees, loading } = useEmployees();
   const { byDate } = useEmployeeAttendance(id);
   const { office } = useOffice();
+  const { calendar } = useCalendar();
 
   const employee = employees.find((e) => e.id === id);
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/admin/history'));
@@ -61,7 +64,7 @@ export default function EmployeeReport() {
   if (!employee) return <PageBody />;
 
   const { departmentName, subDepartmentName } = describeEmployee(employee, departments);
-  const summary = summariseMonth(byDate, month, (l) => classifyLocation(l, office).kind);
+  const summary = summariseMonth(byDate, month, (l) => classifyLocation(l, office).kind, calendar);
   const days = daysOfMonth(month);
 
   return (
@@ -88,7 +91,8 @@ export default function EmployeeReport() {
         {STATUS_ORDER.map((k) => (
           <Tile key={k} label={STATUS[k].label} value={summary.counts[k]} color={STATUS[k].color} bg={STATUS[k].bg} />
         ))}
-        <Tile label="Not filled" value={summary.notFilled} color={COLORS.text} bg={COLORS.chipBg} />
+        <Tile label="Weekly off" value={summary.weeklyOff} color={DAY_KIND.weeklyOff.color} bg={DAY_KIND.weeklyOff.bg} />
+        <Tile label="Not filled" value={summary.notFilled} color="#9A5B00" bg="#FFF4E0" />
         <Tile label="Outside office" value={summary.outside} color={COLORS.danger} bg="#FDECEC" />
         <Tile label="Worked" value={formatDuration(summary.minutes) || '0h'} color={COLORS.white} bg={COLORS.navy} />
       </View>
@@ -110,7 +114,9 @@ export default function EmployeeReport() {
           ) : null}
           {days.map((date, i) => {
             const r = byDate[date];
-            const s = r ? STATUS[r.status] : null;
+            // A day without an entry is a company holiday, a weekly off, or "Not filled".
+            const off = r ? null : dayInfo(date, calendar);
+            const s = r ? STATUS[r.status] : off ? DAY_KIND[off.kind] : null;
             const mins = r ? workedMinutes(r.inTime, r.outTime) : null;
             const times = r?.inTime ? `${r.inTime} – ${r.outTime || '…'}` : '—';
             const statusEl = (
@@ -118,6 +124,7 @@ export default function EmployeeReport() {
                 <Text style={[styles.badgeText, { color: s?.color ?? '#9A5B00' }]}>{s?.label ?? 'Not filled'}</Text>
               </View>
             );
+            const remark = r?.remark || (off?.kind === 'holiday' ? off.name : '');
             const locationEl = !r ? null : (
               <PunchLocations record={r} office={office} compact={!asTable} />
             );
@@ -128,16 +135,16 @@ export default function EmployeeReport() {
               </View>
             );
             return asTable ? (
-              <View key={date} style={[styles.tr, i > 0 && styles.trBorder, !r && styles.rowMissing]}>
+              <View key={date} style={[styles.tr, i > 0 && styles.trBorder, !r && !off && styles.rowMissing]}>
                 <View style={styles.colDate}>{dateEl}</View>
                 <View style={styles.colStatus}>{statusEl}</View>
                 <Text style={[styles.td, styles.colTime]}>{times}</Text>
                 <Text style={[styles.td, styles.colHours]}>{mins != null ? formatDuration(mins) : '—'}</Text>
                 <View style={styles.colLoc}>{locationEl ?? <Text style={styles.muted}>—</Text>}</View>
-                <Text style={[styles.td, styles.colRemark]} numberOfLines={2}>{r?.remark || '—'}</Text>
+                <Text style={[styles.td, styles.colRemark]} numberOfLines={2}>{remark || '—'}</Text>
               </View>
             ) : (
-              <View key={date} style={[styles.card, i > 0 && styles.trBorder, !r && styles.rowMissing]}>
+              <View key={date} style={[styles.card, i > 0 && styles.trBorder, !r && !off && styles.rowMissing]}>
                 <View style={styles.cardTop}>
                   {dateEl}
                   <View style={{ flex: 1, gap: 4 }}>
@@ -150,7 +157,7 @@ export default function EmployeeReport() {
                         </Text>
                       ) : null}
                     </View>
-                    {r?.remark ? <Text style={styles.sub}>{r.remark}</Text> : null}
+                    {remark ? <Text style={styles.sub}>{remark}</Text> : null}
                     {locationEl}
                   </View>
                 </View>

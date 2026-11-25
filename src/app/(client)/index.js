@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import Screen from '../../components/Screen';
+import { dayInfo, useCalendar } from '../../data/calendar';
 import AttendanceEntry from '../../components/attendance/AttendanceEntry';
 import { Avatar } from '../../components/admin/ui';
 import { useSession } from '../../data/session';
@@ -10,6 +11,8 @@ import { describeEmployee } from '../../data/employees';
 import {
   STATUS,
   STATUS_ORDER,
+  DAY_KIND,
+  summariseMonth,
   formatDateKey,
   formatDuration,
   formatMonth,
@@ -26,6 +29,7 @@ export default function MyAttendance() {
   const { employee } = useSession(); // (client)/_layout guarantees a signed-in employee
   const { departments } = useDepartments();
   const { byDate, loading } = useEmployeeAttendance(employee?.id);
+  const { calendar } = useCalendar();
   const today = toDateKey();
   const [date, setDate] = useState(today);
   const { width } = useWindowDimensions();
@@ -35,15 +39,17 @@ export default function MyAttendance() {
   const { departmentName, subDepartmentName } = describeEmployee(employee, departments);
 
   const month = date.slice(0, 7);
-  const monthRecords = Object.values(byDate)
-    .filter((r) => r.date.startsWith(month))
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const counts = Object.fromEntries(STATUS_ORDER.map((k) => [k, 0]));
-  let totalMinutes = 0;
-  for (const r of monthRecords) {
-    if (counts[r.status] != null) counts[r.status] += 1;
-    totalMinutes += workedMinutes(r.inTime, r.outTime) ?? 0;
-  }
+  // History: this month's entries plus company holidays (so far) the employee didn't work.
+  const holidayRows = calendar.holidays
+    .filter((h) => h.date.startsWith(month) && h.date <= today && !byDate[h.date])
+    .map((h) => ({ id: `holiday-${h.date}`, date: h.date, holiday: h.name }));
+  const monthRecords = [
+    ...Object.values(byDate).filter((r) => r.date.startsWith(month)),
+    ...holidayRows,
+  ].sort((a, b) => b.date.localeCompare(a.date));
+  // Summary counts company holidays as Holiday (see summariseMonth).
+  const { counts, minutes: totalMinutes } = summariseMonth(byDate, month, null, calendar);
+  const offDay = dayInfo(date, calendar);
 
   return (
     <Screen>
@@ -89,6 +95,18 @@ export default function MyAttendance() {
         </Pressable>
       </View>
 
+      {offDay ? (
+        <View style={[styles.offBanner, { backgroundColor: DAY_KIND[offDay.kind].bg }]}>
+          <MaterialCommunityIcons name={DAY_KIND[offDay.kind].icon} size={20} color={DAY_KIND[offDay.kind].color} />
+          <Text style={[styles.offBannerText, { color: DAY_KIND[offDay.kind].color }]}>
+            {offDay.kind === 'holiday'
+              ? `${date === today ? 'Today is' : 'This was'} a company holiday: ${offDay.name}`
+              : `${date === today ? 'Today is' : 'This was'} a weekly off (${offDay.name})`}
+            {date === today ? '. No need to fill in attendance unless you are working today.' : '.'}
+          </Text>
+        </View>
+      ) : null}
+
       {loading ? (
         <ActivityIndicator color={COLORS.navy} style={{ marginVertical: 24 }} />
       ) : (
@@ -116,8 +134,8 @@ export default function MyAttendance() {
           <Text style={styles.empty}>No entries in {formatMonth(date)} yet.</Text>
         ) : (
           monthRecords.map((r, i) => {
-            const s = STATUS[r.status];
-            const mins = workedMinutes(r.inTime, r.outTime);
+            const s = r.holiday ? DAY_KIND.holiday : STATUS[r.status];
+            const mins = r.holiday ? null : workedMinutes(r.inTime, r.outTime);
             const selected = r.date === date;
             return (
               <Pressable
@@ -134,7 +152,7 @@ export default function MyAttendance() {
                   <Text style={[styles.badgeText, { color: s?.color ?? COLORS.text }]}>{s?.label ?? r.status}</Text>
                 </View>
                 <Text style={styles.rowTimes}>
-                  {r.inTime ? `${r.inTime} – ${r.outTime || '…'}` : r.remark || '—'}
+                  {r.holiday || (r.inTime ? `${r.inTime} – ${r.outTime || '…'}` : r.remark || '—')}
                 </Text>
                 <Text style={styles.rowHours}>{mins != null ? formatDuration(mins) : ''}</Text>
               </Pressable>
@@ -147,6 +165,8 @@ export default function MyAttendance() {
 }
 
 const styles = StyleSheet.create({
+  offBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 4, padding: 14, marginBottom: 16 },
+  offBannerText: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   who: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 },
   label: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   name: { fontSize: 26, fontWeight: '800', color: COLORS.text, marginTop: 2 },

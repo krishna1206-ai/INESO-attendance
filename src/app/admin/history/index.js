@@ -10,6 +10,7 @@ import { describeEmployee, useEmployees } from '../../../data/employees';
 import { formatDuration, monthOf, summariseMonth, toDateKey, useAttendanceForMonth } from '../../../data/attendance';
 import { classifyLocation } from '../../../data/geo';
 import { useOffice } from '../../../data/settings';
+import { useCalendar } from '../../../data/calendar';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 900;
@@ -26,6 +27,7 @@ export default function AdminHistory() {
   const { employees } = useEmployees();
   const { byEmployee } = useAttendanceForMonth(month);
   const { office } = useOffice();
+  const { calendar } = useCalendar();
   const classify = (l) => classifyLocation(l, office).kind;
 
   const q = query.trim().toLowerCase();
@@ -33,7 +35,7 @@ export default function AdminHistory() {
     .filter((e) => deptFilter === 'all' || e.departmentId === deptFilter)
     .filter((e) => !q || e.name.toLowerCase().includes(q) || (e.email ?? '').includes(q))
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => ({ employee: e, summary: summariseMonth(byEmployee[e.id] ?? {}, month, classify) }));
+    .map((e) => ({ employee: e, summary: summariseMonth(byEmployee[e.id] ?? {}, month, classify, calendar) }));
 
   const open = (e) => router.push(`/admin/history/${e.id}?month=${month}`);
 

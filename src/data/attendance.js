@@ -1,5 +1,6 @@
 import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
+import { dayInfo } from './calendar';
 
 // Attendance entries, stored in Supabase (table `attendance`). Each employee fills in their own
 // day (the company has no punching machine). One record per employee per day:
@@ -20,6 +21,14 @@ export const STATUS = {
   holiday: { label: 'Holiday', short: 'H', color: '#B7791F', bg: '#FEF5E3', needsTime: false, icon: 'party-popper' },
 };
 export const STATUS_ORDER = ['present', 'half_day', 'absent', 'leave', 'holiday'];
+// What employees can pick themselves. Holidays and weekly offs come from the company calendar
+// set by the admin, so employees no longer mark Holiday.
+export const EMPLOYEE_STATUS_ORDER = ['present', 'half_day', 'absent', 'leave'];
+// How a day without an entry is shown when it's a company holiday / weekly off.
+export const DAY_KIND = {
+  holiday: { label: 'Holiday', color: '#B7791F', bg: '#FEF5E3', icon: 'party-popper' },
+  weeklyOff: { label: 'Weekly off', color: '#4A5568', bg: '#E9ECF1', icon: 'calendar-weekend-outline' },
+};
 
 // Employees may only fill in or change TODAY's entry: past days are locked and
 // future days can't be added.
@@ -78,22 +87,29 @@ export function daysOfMonth(month) {
 
 // Month summary for one employee from their { [date]: record } map.
 // `classify(location)` returns 'office' | 'outside' | ... (see geo.classifyLocation).
-export function summariseMonth(byDate, month, classify) {
+// `calendar` (see calendar.js): days without an entry that are a company holiday count as
+// Holiday and weekly offs as weeklyOff, not as "Not filled". If someone worked that day,
+// their entry counts as usual.
+export function summariseMonth(byDate, month, classify, calendar) {
   const counts = Object.fromEntries(STATUS_ORDER.map((k) => [k, 0]));
   let minutes = 0;
   let notFilled = 0;
   let outside = 0;
+  let weeklyOff = 0;
   for (const date of daysOfMonth(month)) {
     const r = byDate[date];
     if (!r) {
-      notFilled += 1;
+      const day = dayInfo(date, calendar);
+      if (day?.kind === 'holiday') counts.holiday += 1;
+      else if (day?.kind === 'weeklyOff') weeklyOff += 1;
+      else notFilled += 1;
       continue;
     }
     if (counts[r.status] != null) counts[r.status] += 1;
     minutes += workedMinutes(r.inTime, r.outTime) ?? 0;
     if (classify && punchedOutsideOffice(r, classify)) outside += 1;
   }
-  return { counts, minutes, notFilled, outside };
+  return { counts, minutes, notFilled, outside, weeklyOff };
 }
 
 // ---------------------------------------------------------------------------

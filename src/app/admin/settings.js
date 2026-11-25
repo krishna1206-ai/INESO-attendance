@@ -3,6 +3,7 @@ import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, Vie
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { PageBody } from '../../components/Screen';
 import { Button, PageTitle } from '../../components/admin/ui';
+import CalendarSettings from '../../components/admin/CalendarSettings';
 import { DEFAULT_RADIUS, saveOffice, useOffice } from '../../data/settings';
 import { getCurrentLocation, mapUrl } from '../../data/geo';
 import { COLORS } from '../../theme';
@@ -167,6 +168,9 @@ export default function AdminSettings() {
           </>
         )}
       </View>
+
+      {/* Weekly offs and company holidays */}
+      <CalendarSettings />
     </PageBody>
   );
 }

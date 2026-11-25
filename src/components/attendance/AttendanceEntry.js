@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   STATUS,
-  STATUS_ORDER,
+  EMPLOYEE_STATUS_ORDER,
   clearAttendance,
   entryLocations,
   formatDuration,
@@ -107,7 +107,7 @@ export default function AttendanceEntry({ employeeId, date, record }) {
     <View style={styles.card}>
       <Text style={styles.label}>STATUS</Text>
       <View style={styles.statuses}>
-        {STATUS_ORDER.map((key) => {
+        {EMPLOYEE_STATUS_ORDER.map((key) => {
           const s = STATUS[key];
           const active = status === key;
           // Once punched in, the day can only be Present or Half Day.

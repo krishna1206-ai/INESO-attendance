@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { PageBody } from '../../components/Screen';
 import { Avatar, EmptyState, PageTitle } from '../../components/admin/ui';
@@ -9,6 +9,7 @@ import { useDepartments } from '../../data/departments';
 import { describeEmployee, useEmployees } from '../../data/employees';
 import {
   STATUS,
+  DAY_KIND,
   punchedOutsideOffice,
   formatDateKey,
   formatDuration,
@@ -19,6 +20,7 @@ import {
 } from '../../data/attendance';
 import { classifyLocation } from '../../data/geo';
 import { useOffice } from '../../data/settings';
+import { dayInfo, useCalendar } from '../../data/calendar';
 import { COLORS } from '../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -34,6 +36,8 @@ export default function AdminAttendance() {
   const { employees } = useEmployees();
   const { byEmployee } = useAttendanceForDate(date);
   const { office } = useOffice();
+  const { calendar } = useCalendar();
+  const offDay = dayInfo(date, calendar);
 
   const rows = [...employees]
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -80,6 +84,18 @@ export default function AdminAttendance() {
         </Pressable>
       </View>
 
+      {offDay ? (
+        <View style={[styles.offBanner, { backgroundColor: DAY_KIND[offDay.kind].bg }]}>
+          <MaterialCommunityIcons name={DAY_KIND[offDay.kind].icon} size={18} color={DAY_KIND[offDay.kind].color} />
+          <Text style={[styles.offBannerText, { color: DAY_KIND[offDay.kind].color }]}>
+            {offDay.kind === 'holiday'
+              ? `Company holiday: ${offDay.name}`
+              : `Weekly off (${offDay.name})`}
+            {' — only people who worked today have an entry.'}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Summary + filter */}
       <View style={styles.summaryRow}>
         <View style={styles.summary}>
@@ -112,7 +128,8 @@ export default function AdminAttendance() {
             </View>
           ) : null}
           {visible.map(({ employee: e, record }, i) => {
-            const s = record ? STATUS[record.status] : null;
+            // No entry on a holiday / weekly off shows the day type instead of "Not filled".
+            const s = record ? STATUS[record.status] : offDay ? DAY_KIND[offDay.kind] : null;
             const mins = record ? workedMinutes(record.inTime, record.outTime) : null;
             const { departmentName, subDepartmentName } = describeEmployee(e, departments);
             const times = record?.inTime ? `${record.inTime} – ${record.outTime || '…'}` : '—';
@@ -185,6 +202,8 @@ function Pill({ value, label, color, bg }) {
 }
 
 const styles = StyleSheet.create({
+  offBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 4, padding: 12, marginBottom: 16 },
+  offBannerText: { fontSize: 14, fontWeight: '600', flexShrink: 1 },
   warn: {
     flexDirection: 'row',
     alignItems: 'center',
