@@ -91,8 +91,7 @@ export function summariseMonth(byDate, month, classify) {
     }
     if (counts[r.status] != null) counts[r.status] += 1;
     minutes += workedMinutes(r.inTime, r.outTime) ?? 0;
-    const { first, last } = entryLocations(r);
-    if (classify && [first, last].some((l) => l && (l.mocked || classify(l) === 'outside'))) outside += 1;
+    if (classify && punchedOutsideOffice(r, classify)) outside += 1;
   }
   return { counts, minutes, notFilled, outside };
 }
@@ -249,6 +248,24 @@ export async function punchOut(employeeId, { remark, location }) {
 export function entryLocations(record) {
   const list = record?.locations ?? [];
   return { first: list[0] ?? null, last: list[list.length - 1] ?? null, all: list };
+}
+
+// Where the employee was when they punched in and when they punched out.
+// in: the 'in' punch (older records: the first save). out: the 'out' punch, only once
+// an Out time exists. Remark-only saves ('updated') are ignored.
+export function punchLocations(record) {
+  const list = record?.locations ?? [];
+  const inLoc = list.find((l) => l.action === 'in') ?? list[0] ?? null;
+  const outLoc = record?.outTime
+    ? [...list].reverse().find((l) => l.action === 'out') ?? null
+    : null;
+  return { in: inLoc, out: outLoc };
+}
+
+// True when the punch in or punch out was away from the office (or from a fake location).
+export function punchedOutsideOffice(record, classify) {
+  const p = punchLocations(record);
+  return [p.in, p.out].some((l) => l && (l.mocked || classify(l) === 'outside'));
 }
 
 export async function clearAttendance(employeeId, date) {

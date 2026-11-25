@@ -4,12 +4,12 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { PageBody } from '../../components/Screen';
 import { Avatar, EmptyState, PageTitle } from '../../components/admin/ui';
-import LocationBadge from '../../components/admin/LocationBadge';
+import { PunchLocations } from '../../components/admin/LocationBadge';
 import { useDepartments } from '../../data/departments';
 import { describeEmployee, useEmployees } from '../../data/employees';
 import {
   STATUS,
-  entryLocations,
+  punchedOutsideOffice,
   formatDateKey,
   formatDuration,
   shiftDateKey,
@@ -39,12 +39,9 @@ export default function AdminAttendance() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((e) => {
       const record = byEmployee[e.id] ?? null;
-      const { first, last } = entryLocations(record);
-      // An entry counts as "outside" if any save that day was made away from the office.
-      const outside = [first, last].some(
-        (l) => l && (classifyLocation(l, office).kind === 'outside' || l.mocked)
-      );
-      return { employee: e, record, first, last, outside };
+      // "Outside" when the punch in or punch out was made away from the office.
+      const outside = Boolean(record) && punchedOutsideOffice(record, (l) => classifyLocation(l, office).kind);
+      return { employee: e, record, outside };
     });
 
   const filled = rows.filter((r) => r.record).length;
@@ -114,12 +111,11 @@ export default function AdminAttendance() {
               <Text style={[styles.th, styles.colLoc]}>LOCATION</Text>
             </View>
           ) : null}
-          {visible.map(({ employee: e, record, first, last }, i) => {
+          {visible.map(({ employee: e, record }, i) => {
             const s = record ? STATUS[record.status] : null;
             const mins = record ? workedMinutes(record.inTime, record.outTime) : null;
             const { departmentName, subDepartmentName } = describeEmployee(e, departments);
             const times = record?.inTime ? `${record.inTime} – ${record.outTime || '…'}` : '—';
-            const sameSpot = first && last && first === last;
             const statusEl = (
               <View style={[styles.badge, { backgroundColor: s?.bg ?? COLORS.chipBg }]}>
                 <Text style={[styles.badgeText, { color: s?.color ?? COLORS.body }]}>{s?.label ?? 'Not filled'}</Text>
@@ -128,10 +124,7 @@ export default function AdminAttendance() {
             const locationEl = !record ? (
               <Text style={styles.muted}>—</Text>
             ) : (
-              <View style={{ gap: 4 }}>
-                <LocationBadge location={first} office={office} label={sameSpot || !last ? null : 'IN'} />
-                {!sameSpot && last ? <LocationBadge location={last} office={office} label="LATEST" /> : null}
-              </View>
+              <PunchLocations record={record} office={office} />
             );
             return asTable ? (
               <View key={e.id} style={[styles.tr, i > 0 && styles.trBorder]}>

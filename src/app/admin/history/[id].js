@@ -5,14 +5,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { PageBody } from '../../../components/Screen';
 import { Avatar, EmptyState } from '../../../components/admin/ui';
 import MonthPicker from '../../../components/admin/MonthPicker';
-import LocationBadge from '../../../components/admin/LocationBadge';
+import { PunchLocations } from '../../../components/admin/LocationBadge';
 import { useDepartments } from '../../../data/departments';
 import { describeEmployee, useEmployees } from '../../../data/employees';
 import {
   STATUS,
   STATUS_ORDER,
   daysOfMonth,
-  entryLocations,
   formatDateKey,
   formatDuration,
   monthOf,
@@ -113,7 +112,6 @@ export default function EmployeeReport() {
             const r = byDate[date];
             const s = r ? STATUS[r.status] : null;
             const mins = r ? workedMinutes(r.inTime, r.outTime) : null;
-            const { first, last } = entryLocations(r);
             const times = r?.inTime ? `${r.inTime} – ${r.outTime || '…'}` : '—';
             const statusEl = (
               <View style={[styles.badge, { backgroundColor: s?.bg ?? '#FFF4E0' }]}>
@@ -121,12 +119,7 @@ export default function EmployeeReport() {
               </View>
             );
             const locationEl = !r ? null : (
-              <View style={{ gap: 4 }}>
-                <LocationBadge location={first} office={office} label={last && last !== first ? 'IN' : null} compact={!asTable} />
-                {last && last !== first ? (
-                  <LocationBadge location={last} office={office} label="LATEST" compact={!asTable} />
-                ) : null}
-              </View>
+              <PunchLocations record={r} office={office} compact={!asTable} />
             );
             const dateEl = (
               <View style={styles.dateCell}>

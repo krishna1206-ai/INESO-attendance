@@ -1,6 +1,7 @@
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { classifyLocation, mapUrl } from '../../data/geo';
+import { entryLocations, punchLocations } from '../../data/attendance';
 import { COLORS } from '../../theme';
 
 const KIND = {
@@ -41,6 +42,25 @@ export default function LocationBadge({ location, office, label, compact }) {
           <Feather name="map-pin" size={13} color={COLORS.blue} />
           {!compact ? <Text style={styles.mapText}>Map</Text> : null}
         </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+// IN / OUT location badges for one attendance entry. For days without punches (Absent,
+// Leave, Holiday) it shows the single saved location, if any, without a label.
+export function PunchLocations({ record, office, compact }) {
+  if (!record) return null;
+  if (!record.inTime) {
+    const { last } = entryLocations(record);
+    return <LocationBadge location={last} office={office} compact={compact} />;
+  }
+  const p = punchLocations(record);
+  return (
+    <View style={{ gap: 4 }}>
+      <LocationBadge location={p.in} office={office} label="IN" compact={compact} />
+      {record.outTime ? (
+        <LocationBadge location={p.out} office={office} label="OUT" compact={compact} />
       ) : null}
     </View>
   );
