@@ -1,4 +1,4 @@
-import { supabase, errorMessage } from '../lib/supabase';
+import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
 
 // Departments and their sub-departments, stored in Supabase (tables `departments` and
@@ -42,8 +42,8 @@ const TABLES = ['departments', 'sub_departments'];
 
 async function fetchDepartments() {
   const [deps, subs] = await Promise.all([
-    supabase.from('departments').select('id, name, icon, created_at').order('created_at'),
-    supabase
+    db().from('departments').select('id, name, icon, created_at').order('created_at'),
+    db()
       .from('sub_departments')
       .select('id, department_id, name, image_uri, link_url, created_at')
       .order('created_at'),
@@ -93,7 +93,7 @@ export async function addDepartment({ name, icon }) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return 'Please enter a department name.';
   if (!icon) return 'Please select an icon.';
-  const { error } = await supabase.from('departments').insert({ name: trimmed, icon });
+  const { error } = await db().from('departments').insert({ name: trimmed, icon });
   if (error) return duplicate(error, trimmed);
   invalidate(...TABLES);
   return null;
@@ -103,7 +103,7 @@ export async function updateDepartment(id, { name, icon }) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return 'Please enter a department name.';
   if (!icon) return 'Please select an icon.';
-  const { error } = await supabase
+  const { error } = await db()
     .from('departments')
     .update({ name: trimmed, icon, updated_at: new Date().toISOString() })
     .eq('id', id);
@@ -115,7 +115,7 @@ export async function updateDepartment(id, { name, icon }) {
 // Deletes a department together with its sub-departments. Refused while employees still
 // belong to it, so nobody is left without a department.
 export async function deleteDepartment(id) {
-  const { count, error: countError } = await supabase
+  const { count, error: countError } = await db()
     .from('profiles')
     .select('id', { count: 'exact', head: true })
     .eq('department_id', id);
@@ -123,7 +123,7 @@ export async function deleteDepartment(id) {
   if (count > 0) {
     return `This department still has ${count} employee${count === 1 ? '' : 's'}. Move them to another department or delete them first.`;
   }
-  const { error } = await supabase.from('departments').delete().eq('id', id);
+  const { error } = await db().from('departments').delete().eq('id', id);
   if (error) {
     return error.code === '23503'
       ? 'This department still has employees. Move them to another department or delete them first.'
@@ -155,7 +155,7 @@ function validateSubDepartment({ name, imageUri }) {
 export async function addSubDepartment(deptId, input) {
   const { error: invalid, value } = validateSubDepartment(input);
   if (invalid) return invalid;
-  const { error } = await supabase.from('sub_departments').insert({ department_id: deptId, ...value });
+  const { error } = await db().from('sub_departments').insert({ department_id: deptId, ...value });
   if (error) return duplicate(error, value.name, ' in this department');
   invalidate(...TABLES);
   return null;
@@ -164,7 +164,7 @@ export async function addSubDepartment(deptId, input) {
 export async function updateSubDepartment(deptId, subId, input) {
   const { error: invalid, value } = validateSubDepartment(input);
   if (invalid) return invalid;
-  const { error } = await supabase
+  const { error } = await db()
     .from('sub_departments')
     .update({ ...value, updated_at: new Date().toISOString() })
     .eq('id', subId)
@@ -175,7 +175,7 @@ export async function updateSubDepartment(deptId, subId, input) {
 }
 
 export async function deleteSubDepartment(deptId, subId) {
-  const { error } = await supabase
+  const { error } = await db()
     .from('sub_departments')
     .delete()
     .eq('id', subId)

@@ -8,6 +8,7 @@ export default function RootLayout() {
         {/* Employee pages (home, departments, attendance): sign-in required, see (client)/_layout.js */}
         <Stack.Screen name="(client)" />
         <Stack.Screen name="login" options={{ title: 'Sign in · INEOS' }} />
+        <Stack.Screen name="admin-login" options={{ title: 'Admin sign in · INEOS' }} />
         {/* Admin panel: its own layout (sidebar + pages) in admin/_layout.js */}
         <Stack.Screen name="admin" options={{ title: 'INEOS Admin' }} />
       </Stack>

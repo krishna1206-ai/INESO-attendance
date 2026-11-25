@@ -1,4 +1,4 @@
-import { supabase, errorMessage } from '../lib/supabase';
+import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
 
 // Attendance entries, stored in Supabase (table `attendance`). Each employee fills in their own
@@ -137,7 +137,7 @@ export function formatDuration(minutes) {
 // the signed-in employee and today's date in India time.)
 
 const call = async (fn, params) => {
-  const { error } = await supabase.rpc(fn, params);
+  const { error } = await db().rpc(fn, params);
   if (error) return errorMessage(error);
   invalidate('attendance');
   return null;
@@ -218,7 +218,7 @@ function mapRow(r) {
 }
 
 async function select(build) {
-  const { data, error } = await build(supabase.from('attendance').select(COLUMNS));
+  const { data, error } = await build(db().from('attendance').select(COLUMNS));
   if (error) throw error;
   return data.map(mapRow);
 }

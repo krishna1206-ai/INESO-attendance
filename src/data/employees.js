@@ -1,4 +1,4 @@
-import { supabase, errorMessage } from '../lib/supabase';
+import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
 import { checkPasswordRules } from './passwords';
 
@@ -28,7 +28,7 @@ export function mapProfile(p) {
 }
 
 async function fetchEmployees() {
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('profiles')
     .select(PROFILE_COLUMNS)
     .eq('role', 'employee')
@@ -68,7 +68,7 @@ const args = ({ name, email, departmentId, subDepartmentId }, departments) => {
 export async function addEmployee(input, departments) {
   const invalid = validate(input, departments, false);
   if (invalid) return invalid;
-  const { error } = await supabase.rpc('admin_create_employee', {
+  const { error } = await db().rpc('admin_create_employee', {
     ...args(input, departments),
     p_password: input.password,
   });
@@ -80,7 +80,7 @@ export async function addEmployee(input, departments) {
 export async function updateEmployee(id, input, departments) {
   const invalid = validate(input, departments, true);
   if (invalid) return invalid;
-  const { error } = await supabase.rpc('admin_update_employee', {
+  const { error } = await db().rpc('admin_update_employee', {
     p_id: id,
     ...args(input, departments),
     p_password: input.password || null,
@@ -91,7 +91,7 @@ export async function updateEmployee(id, input, departments) {
 }
 
 export async function deleteEmployee(id) {
-  const { error } = await supabase.rpc('admin_delete_employee', { p_id: id });
+  const { error } = await db().rpc('admin_delete_employee', { p_id: id });
   if (error) return errorMessage(error);
   invalidate('profiles', 'attendance');
   return null;

@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Redirect, Slot, router, usePathname } from 'expo-router';
 import { AppHeader, UserMenu } from '../../components/Screen';
 import { useSession } from '../../data/session';
+import { setMode } from '../../lib/supabase';
 import { COLORS, WIDE_BREAKPOINT } from '../../theme';
 
 // `short` is used on the phone tab bar, where five tabs share the width.
@@ -49,6 +50,7 @@ const NAV = [
 // Admin shell: header + sidebar (wide screens) or tab bar (phones) around every /admin page.
 // Only signed-in admins get in; everyone else is sent to /login (employees to their own page).
 export default function AdminLayout() {
+  setMode('admin'); // native apps: admin pages use the admin sign-in
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT;
   const pathname = usePathname();
@@ -61,8 +63,8 @@ export default function AdminLayout() {
       </View>
     );
   }
-  if (!account) return <Redirect href="/login" />;
-  if (role !== 'admin') return <Redirect href="/" />;
+  if (!account) return <Redirect href="/admin-login" />;
+  if (role !== 'admin') return <Redirect href="/admin-login" />;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

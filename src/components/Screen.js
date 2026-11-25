@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { signOut, useSession } from '../data/session';
+import { getMode } from '../lib/supabase';
 import { COLORS, MAX_CONTENT_WIDTH } from '../theme';
 
 // Navy INEOS header with the orange accent bar. `fullWidth` drops the centred max-width
@@ -76,9 +77,11 @@ export function UserMenu({ name }) {
         </View>
       ) : null}
       <Pressable
-        onPress={() => {
-          signOut();
-          router.replace('/login');
+        onPress={async () => {
+          // Logs out only this side (admin or employee); the other tab stays signed in.
+          const mode = getMode();
+          await signOut(mode);
+          router.replace(mode === 'admin' ? '/admin-login' : '/login');
         }}
         style={({ pressed }) => [styles.logout, pressed && { opacity: 0.8 }]}
         accessibilityRole="button"

@@ -1,11 +1,13 @@
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { useSession } from '../../data/session';
+import { setMode } from '../../lib/supabase';
 import { COLORS } from '../../theme';
 
 // Employee pages require a signed-in employee; signed-out visitors are sent to /login and
 // admins to their panel.
 export default function ClientLayout() {
+  setMode('employee'); // native apps: employee pages use the employee sign-in
   const { employee, role, loading } = useSession();
 
   if (loading) {

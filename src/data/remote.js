@@ -1,13 +1,15 @@
 import { useEffect, useReducer } from 'react';
-import { supabase } from '../lib/supabase';
+import { clientFor, getMode } from '../lib/supabase';
 
 // A tiny shared cache for Supabase reads.
 //  * Each query has a key (e.g. 'attendance:date:2026-11-25') and a fetcher.
 //  * Screens using the same key share one request and one result.
 //  * When a table changes (our own writes, or anyone else's via Supabase Realtime), every
 //    query that reads that table is fetched again, so all screens stay up to date.
+//  * Admin and employee sign-ins are kept apart (see lib/supabase.js), so every query and
+//    live-update channel belongs to one mode ('admin' | 'employee').
 
-const queries = new Map(); // key -> { data, error, loaded, stale, inflight, fetcher, tables, listeners }
+const queries = new Map(); // `${mode}|${key}` -> { mode, data, error, loaded, stale, inflight, fetcher, tables, listeners }
 
 function notify(q) {
   q.listeners.forEach((fn) => fn());
@@ -49,9 +51,10 @@ export function invalidate(...tables) {
   }
 }
 
-// After sign-in / sign-out every result may differ (different permissions).
-export function invalidateAll() {
+// After sign-in / sign-out of one mode, every result of that mode may differ.
+export function invalidateAll(mode) {
   for (const q of queries.values()) {
+    if (q.mode !== mode) continue;
     q.data = undefined;
     q.loaded = false;
     if (q.listeners.size > 0) run(q);
@@ -59,14 +62,16 @@ export function invalidateAll() {
   }
 }
 
-// Realtime: one channel per table, opened on first use.
-const channels = new Map();
+// Realtime: one channel per mode and table, opened on first use.
+const channels = new Map(); // `${mode}|${table}` -> channel
 let pending = new Set();
 let timer = null;
-function watch(table) {
-  if (channels.has(table)) return;
-  const channel = supabase
-    .channel(`table-${table}`)
+function watch(mode, table) {
+  const id = `${mode}|${table}`;
+  if (channels.has(id)) return;
+  const client = clientFor(mode);
+  const channel = client
+    .channel(`table-${mode}-${table}`)
     .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
       // Batch bursts of changes into one refresh.
       pending.add(table);
@@ -78,34 +83,41 @@ function watch(table) {
       }, 300);
     })
     .subscribe();
-  channels.set(table, channel);
+  channels.set(id, channel);
 }
 
-// Realtime only delivers rows the signed-in user may read, so reconnect channels after
-// the session changes.
-export function resetRealtime() {
-  for (const ch of channels.values()) supabase.removeChannel(ch);
-  channels.clear();
-  const watched = new Set();
-  for (const q of queries.values()) if (q.listeners.size > 0) q.tables.forEach((t) => watched.add(t));
-  watched.forEach(watch);
+// Realtime only delivers rows the signed-in user may read, so reconnect that mode's channels
+// after its sign-in changes.
+export function resetRealtime(mode) {
+  const client = clientFor(mode);
+  for (const [id, ch] of channels) {
+    if (id.startsWith(`${mode}|`)) {
+      client.removeChannel(ch);
+      channels.delete(id);
+    }
+  }
+  for (const q of queries.values()) {
+    if (q.mode === mode && q.listeners.size > 0) q.tables.forEach((t) => watch(mode, t));
+  }
 }
 
 // { data, loading, error } for a query. Pass key = null to skip (e.g. no user yet).
 export function useRemote(key, fetcher, tables) {
   const [, force] = useReducer((x) => x + 1, 0);
+  const mode = getMode();
+  const fullKey = key ? `${mode}|${key}` : null;
 
   useEffect(() => {
-    if (!key) return undefined;
-    let q = queries.get(key);
+    if (!fullKey) return undefined;
+    let q = queries.get(fullKey);
     if (!q) {
-      q = { key, data: undefined, error: null, loaded: false, stale: false, inflight: null, listeners: new Set() };
-      queries.set(key, q);
+      q = { key: fullKey, mode, data: undefined, error: null, loaded: false, stale: false, inflight: null, listeners: new Set() };
+      queries.set(fullKey, q);
     }
     q.fetcher = fetcher;
     q.tables = tables;
     q.listeners.add(force);
-    tables.forEach(watch);
+    tables.forEach((t) => watch(mode, t));
     if (!q.loaded || q.stale) {
       q.stale = false;
       run(q);
@@ -113,8 +125,8 @@ export function useRemote(key, fetcher, tables) {
     return () => q.listeners.delete(force);
     // fetcher/tables are derived from the key
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [fullKey]);
 
-  const q = key ? queries.get(key) : null;
-  return { data: q?.data, loading: Boolean(key) && !q?.loaded, error: q?.error ?? null };
+  const q = fullKey ? queries.get(fullKey) : null;
+  return { data: q?.data, loading: Boolean(fullKey) && !q?.loaded, error: q?.error ?? null };
 }

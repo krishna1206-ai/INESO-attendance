@@ -1,4 +1,4 @@
-import { supabase, errorMessage } from '../lib/supabase';
+import { db, errorMessage } from '../lib/supabase';
 import { invalidate, useRemote } from './remote';
 
 // Company settings set by the admin, stored in Supabase (table `settings`).
@@ -18,7 +18,7 @@ export async function saveOffice({ name, latitude, longitude, radius }) {
   if (String(latitude).trim() === '' || !isLat(lat)) return 'Latitude must be a number between -90 and 90.';
   if (String(longitude).trim() === '' || !isLng(lng)) return 'Longitude must be a number between -180 and 180.';
   if (!Number.isFinite(r) || r < 25 || r > 5000) return 'Radius must be between 25 and 5000 metres.';
-  const { error } = await supabase.from('settings').upsert({
+  const { error } = await db().from('settings').upsert({
     id: 'office',
     name: (name ?? '').trim() || 'Office',
     latitude: lat,
@@ -32,7 +32,7 @@ export async function saveOffice({ name, latitude, longitude, radius }) {
 }
 
 async function fetchOffice() {
-  const { data, error } = await supabase
+  const { data, error } = await db()
     .from('settings')
     .select('id, name, latitude, longitude, radius, updated_at')
     .eq('id', 'office')
