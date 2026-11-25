@@ -92,25 +92,31 @@ export default function AdminLeave() {
               first={i === 0}
               who={who(r)}
               actions={
-                r.status === 'pending' ? (
+                r.status === 'cancelled' ? null : (
+                  // Pending: Approve / Reject. Already decided: switch to the other decision.
                   <View style={styles.actions}>
-                    <Button
-                      label="Approve"
-                      icon="check"
-                      small
-                      onPress={() => { setNote(''); setDecision({ request: r, approve: true }); }}
-                      accessibilityLabel="Approve leave"
-                    />
-                    <Button
-                      label="Reject"
-                      icon="x"
-                      variant="ghost"
-                      small
-                      onPress={() => { setNote(''); setDecision({ request: r, approve: false }); }}
-                      accessibilityLabel="Reject leave"
-                    />
+                    {r.status !== 'approved' ? (
+                      <Button
+                        label={r.status === 'rejected' ? 'Approve instead' : 'Approve'}
+                        icon="check"
+                        small
+                        variant={r.status === 'pending' ? 'primary' : 'ghost'}
+                        onPress={() => { setNote(r.adminNote ?? ''); setDecision({ request: r, approve: true }); }}
+                        accessibilityLabel="Approve leave"
+                      />
+                    ) : null}
+                    {r.status !== 'rejected' ? (
+                      <Button
+                        label={r.status === 'approved' ? 'Reject instead' : 'Reject'}
+                        icon="x"
+                        variant="ghost"
+                        small
+                        onPress={() => { setNote(r.adminNote ?? ''); setDecision({ request: r, approve: false }); }}
+                        accessibilityLabel="Reject leave"
+                      />
+                    ) : null}
                   </View>
-                ) : null
+                )
               }
             />
           ))}
@@ -119,14 +125,20 @@ export default function AdminLeave() {
 
       <ConfirmModal
         visible={decision !== null}
-        title={decision?.approve ? 'Approve leave?' : 'Reject leave?'}
+        title={
+          decision?.request.status === 'pending'
+            ? decision?.approve ? 'Approve leave?' : 'Reject leave?'
+            : decision?.approve ? 'Change to Approved?' : 'Change to Rejected?'
+        }
         confirmLabel={decision?.approve ? 'Approve' : 'Reject'}
         tone={decision?.approve ? 'primary' : 'danger'}
         message={
           decision
             ? decision.approve
-              ? 'These days will show as Leave in attendance and reports.'
-              : 'The employee will see that the request was rejected.'
+              ? `${decision.request.status === 'rejected' ? 'This request was rejected earlier. ' : ''}These days will show as Leave in attendance and reports.`
+              : decision.request.status === 'approved'
+                ? 'This leave was approved earlier. These days will no longer count as Leave, and the employee will see it as rejected.'
+                : 'The employee will see that the request was rejected.'
             : ''
         }
         onCancel={() => setDecision(null)}

@@ -204,6 +204,13 @@ export async function punchOut(employeeId, { remark, location }) {
   return call('punch_out', { p_remark: remark ?? null, p_location: location });
 }
 
+// "Continue working": removes today's Out time so the employee can punch out again later.
+// The location is logged (action 'resume') so the admin can see it happened.
+export async function resumeWork(employeeId, { location }) {
+  if (!location) return 'Your location is needed. Please allow location and try again.';
+  return call('resume_work', { p_location: location });
+}
+
 export async function clearAttendance(employeeId, date) {
   if (!isEditableDate(date)) return "Only today's attendance can be changed.";
   return call('clear_attendance', {});
