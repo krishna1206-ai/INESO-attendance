@@ -4,7 +4,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { PageBody } from '../../components/Screen';
 import { Avatar, EmptyState, PageTitle } from '../../components/admin/ui';
-import { PunchLocations } from '../../components/admin/LocationBadge';
+import LocationBadge, { PunchLocations } from '../../components/admin/LocationBadge';
 import ConfirmModal from '../../components/ConfirmModal';
 import { useDepartments } from '../../data/departments';
 import { describeEmployee, useEmployees } from '../../data/employees';
@@ -13,6 +13,8 @@ import {
   DAY_KIND,
   adminResumeWork,
   punchedOutsideOffice,
+  punchLocations,
+  entryLocations,
   formatDateKey,
   formatDuration,
   shiftDateKey,
@@ -140,8 +142,10 @@ export default function AdminAttendance() {
             <View style={[styles.tr, styles.thead]}>
               <Text style={[styles.th, styles.colName]}>EMPLOYEE</Text>
               <Text style={[styles.th, styles.colStatus]}>STATUS</Text>
-              <Text style={[styles.th, styles.colTime]}>IN – OUT</Text>
-              <Text style={[styles.th, styles.colLoc]}>LOCATION</Text>
+              <Text style={[styles.th, styles.colPunch]}>PUNCH IN</Text>
+              <Text style={[styles.th, styles.colPunch]}>PUNCH OUT</Text>
+              <Text style={[styles.th, styles.colHours]}>WORKED</Text>
+              <View style={styles.colAction} />
             </View>
           ) : null}
           {visible.map(({ employee: e, record, onLeave }, i) => {
@@ -179,14 +183,49 @@ export default function AdminAttendance() {
                   </View>
                 </View>
                 <View style={styles.colStatus}>{statusEl}</View>
-                <View style={styles.colTime}>
-                  <Text style={styles.td}>{onLeave ? `${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}` : times}</Text>
-                  {mins != null ? <Text style={styles.sub}>{formatDuration(mins)}</Text> : null}
-                  <LateBadge minutes={record?.lateMinutes} compact />
-                  <OvertimeBadge minutes={record?.overtimeMinutes} compact />
-                  {resumeEl}
-                </View>
-                <View style={styles.colLoc}>{locationEl}</View>
+                {record?.inTime ? (
+                  <>
+                    {/* Punch in: time + Late, and where it was made */}
+                    <View style={[styles.colPunch, styles.punchCell]}>
+                      <View style={styles.punchLine}>
+                        <Text style={styles.punchTime}>{record.inTime}</Text>
+                        <LateBadge minutes={record.lateMinutes} />
+                      </View>
+                      <LocationBadge location={punchLocations(record).in} office={office} />
+                    </View>
+                    {/* Punch out: time + overtime (or still working), and where */}
+                    <View style={[styles.colPunch, styles.punchCell]}>
+                      {record.outTime ? (
+                        <>
+                          <View style={styles.punchLine}>
+                            <Text style={styles.punchTime}>{record.outTime}</Text>
+                            <OvertimeBadge minutes={record.overtimeMinutes} />
+                          </View>
+                          <LocationBadge location={punchLocations(record).out} office={office} />
+                        </>
+                      ) : (
+                        <View style={styles.working}>
+                          <View style={styles.workingDot} />
+                          <Text style={styles.workingText}>Working</Text>
+                        </View>
+                      )}
+                    </View>
+                  </>
+                ) : (
+                  // No punches (Absent / Leave / not filled): the note across both punch columns.
+                  <View style={[styles.colPunchBoth, styles.punchCell]}>
+                    <Text style={record?.remark || onLeave ? styles.td : styles.muted} numberOfLines={2}>
+                      {onLeave
+                        ? `${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}`
+                        : record?.remark || '—'}
+                    </Text>
+                    {record && entryLocations(record).last ? (
+                      <LocationBadge location={entryLocations(record).last} office={office} />
+                    ) : null}
+                  </View>
+                )}
+                <Text style={[styles.colHours, styles.hours]}>{mins != null ? formatDuration(mins) : '—'}</Text>
+                <View style={styles.colAction}>{resumeEl}</View>
               </View>
             ) : (
               <View key={e.id} style={[styles.card, i > 0 && styles.trBorder]}>
@@ -337,10 +376,19 @@ const styles = StyleSheet.create({
   tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
   trBorder: { borderTopWidth: 1, borderTopColor: COLORS.border },
   th: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
-  colName: { flex: 3 },
-  colStatus: { flex: 1.4 },
-  colTime: { flex: 1.6 },
-  colLoc: { flex: 3.2 },
+  colName: { flex: 2.4 },
+  colStatus: { flex: 1.2 },
+  colPunch: { flex: 2 },
+  colPunchBoth: { flex: 4 },
+  colHours: { flex: 0.9 },
+  colAction: { width: 170, alignItems: 'flex-end' },
+  punchCell: { gap: 6 },
+  punchLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  punchTime: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  hours: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  working: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  workingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#1E7B4A' },
+  workingText: { fontSize: 14, fontWeight: '600', color: '#1E7B4A' },
   person: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 15, fontWeight: '600', color: COLORS.text },
   sub: { fontSize: 12, color: COLORS.body, marginTop: 2 },
@@ -354,7 +402,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    marginTop: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
