@@ -133,7 +133,9 @@ export async function deleteDepartment(id) {
   return null;
 }
 
-function validateSubDepartment({ name, imageUri, linkUrl }) {
+// Sub-departments have a name and an optional image (upload or image URL). The website-link
+// field was removed from the form; the database column stays empty.
+function validateSubDepartment({ name, imageUri }) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { error: 'Please enter a sub-department name.' };
 
@@ -141,15 +143,11 @@ function validateSubDepartment({ name, imageUri, linkUrl }) {
   if (image && !image.startsWith('data:image/') && !isHttpUrl(normaliseUrl(image))) {
     return { error: 'Image URL is not valid. It should start with http:// or https://' };
   }
-  const link = normaliseUrl(linkUrl);
-  if (link && !isHttpUrl(link)) {
-    return { error: 'Website link is not valid. Example: https://www.ineos.com' };
-  }
   return {
     value: {
       name: trimmed,
       image_uri: image.startsWith('data:') ? image : normaliseUrl(image),
-      link_url: link,
+      link_url: '',
     },
   };
 }

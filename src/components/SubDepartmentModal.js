@@ -17,14 +17,13 @@ import { COLORS } from '../theme';
 import { normaliseUrl } from '../data/departments';
 import { pickAndCompressImage } from '../data/pickImage';
 
-const EMPTY = { name: '', imageUri: '', linkUrl: '' };
+const EMPTY = { name: '', imageUri: '' };
 
 // Add / edit form for a sub-department: image (upload or image URL), website link, name.
 // `initial` is the sub-department being edited, or null to add a new one.
 // onSave(values) resolves to an error string, or null on success.
 export default function SubDepartmentModal({ visible, initial, departmentName, onClose, onSave }) {
   const [name, setName] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
   const [imageMode, setImageMode] = useState('upload'); // 'upload' | 'url'
   const [uploadedUri, setUploadedUri] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -39,7 +38,6 @@ export default function SubDepartmentModal({ visible, initial, departmentName, o
     const src = initial ?? EMPTY;
     const isUploaded = (src.imageUri ?? '').startsWith('data:');
     setName(src.name ?? '');
-    setLinkUrl(src.linkUrl ?? '');
     setImageMode(src.imageUri && !isUploaded ? 'url' : 'upload');
     setUploadedUri(isUploaded ? src.imageUri : '');
     setImageUrl(src.imageUri && !isUploaded ? src.imageUri : '');
@@ -66,7 +64,7 @@ export default function SubDepartmentModal({ visible, initial, departmentName, o
 
   const handleSave = async () => {
     setSaving(true);
-    const message = await onSave({ name, imageUri, linkUrl });
+    const message = await onSave({ name, imageUri });
     setSaving(false);
     if (message) setError(message);
     else onClose();
@@ -175,22 +173,6 @@ export default function SubDepartmentModal({ visible, initial, departmentName, o
                 accessibilityLabel="Image URL"
               />
             )}
-
-            <Text style={[styles.fieldLabel, styles.fieldGap]}>WEBSITE LINK</Text>
-            <TextInput
-              value={linkUrl}
-              onChangeText={(t) => {
-                setLinkUrl(t);
-                clearError();
-              }}
-              placeholder="https://www.ineos.com/..."
-              placeholderTextColor={COLORS.muted}
-              style={styles.input}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              accessibilityLabel="Website link"
-            />
 
             <Text style={[styles.fieldLabel, styles.fieldGap]}>SUB-DEPARTMENT NAME</Text>
             <TextInput

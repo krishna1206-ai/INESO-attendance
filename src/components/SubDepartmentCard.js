@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS } from '../theme';
 
@@ -18,7 +18,6 @@ export default function SubDepartmentCard({
 }) {
   const [imageFailed, setImageFailed] = useState(false);
   const showImage = sub.imageUri && !imageFailed;
-  const linkLabel = sub.linkUrl ? sub.linkUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '') : '';
 
   return (
     <Pressable
@@ -46,19 +45,6 @@ export default function SubDepartmentCard({
         <View style={styles.divider} />
         <Text style={styles.label}>SUB-DEPARTMENT</Text>
         <Text style={styles.title}>{sub.name}</Text>
-
-        {sub.linkUrl ? (
-          <Pressable
-            onPress={() => Linking.openURL(sub.linkUrl)}
-            style={styles.linkRow}
-            accessibilityRole="link"
-          >
-            <Feather name="external-link" size={14} color={COLORS.blue} />
-            <Text style={styles.linkText} numberOfLines={1}>
-              {linkLabel}
-            </Text>
-          </Pressable>
-        ) : null}
 
         <View style={styles.spacer} />
 
@@ -125,8 +111,6 @@ const styles = StyleSheet.create({
   divider: { height: 1, backgroundColor: COLORS.border, marginBottom: 20 },
   label: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3, marginBottom: 8 },
   title: { fontSize: 18, fontWeight: '600', color: COLORS.text },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  linkText: { flexShrink: 1, color: COLORS.blue, fontSize: 14, textDecorationLine: 'underline' },
   spacer: { flexGrow: 1, minHeight: 20 },
   actions: { flexDirection: 'row', gap: 10 },
   action: {
