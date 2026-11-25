@@ -18,6 +18,7 @@ import {
 import { getCurrentLocation } from '../../data/geo';
 import { COLORS } from '../../theme';
 import LateBadge from '../admin/LateBadge';
+import OvertimeBadge from '../admin/OvertimeBadge';
 
 const clock = (d) =>
   `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -147,9 +148,10 @@ export default function AttendanceEntry({ employeeId, date, record }) {
             <TimeBox label="IN TIME" icon="clock-in" value={record?.inTime} />
             <TimeBox label="OUT TIME" icon="clock-out" value={record?.outTime} />
           </View>
-          {record?.lateMinutes > 0 ? (
-            <View style={{ marginTop: 10 }}>
+          {record?.lateMinutes > 0 || record?.overtimeMinutes > 0 ? (
+            <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <LateBadge minutes={record.lateMinutes} />
+              <OvertimeBadge minutes={record.overtimeMinutes} />
             </View>
           ) : null}
 
@@ -359,9 +361,10 @@ function LockedDay({ record }) {
               ) : null}
             </View>
           ) : null}
-          {record.lateMinutes > 0 ? (
-            <View style={{ marginTop: 12 }}>
+          {record.lateMinutes > 0 || record.overtimeMinutes > 0 ? (
+            <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               <LateBadge minutes={record.lateMinutes} />
+              <OvertimeBadge minutes={record.overtimeMinutes} />
             </View>
           ) : null}
 

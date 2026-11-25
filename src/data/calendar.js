@@ -18,7 +18,7 @@ export const WEEKDAYS = [
 ];
 
 const TABLES = ['holidays', 'calendar'];
-export const DEFAULT_SHIFT = { start: '09:00', end: '18:00', grace: 10 };
+export const DEFAULT_SHIFT = { start: '09:00', end: '18:00', grace: 10, overtimeMin: 30 };
 const EMPTY = { weeklyOffs: [0], holidays: [], shift: DEFAULT_SHIFT };
 
 async function fetchCalendar() {
@@ -36,12 +36,14 @@ async function fetchCalendar() {
       start: cal.data?.shift_start ?? DEFAULT_SHIFT.start,
       end: cal.data?.shift_end ?? DEFAULT_SHIFT.end,
       grace: cal.data?.grace_minutes ?? DEFAULT_SHIFT.grace,
+      // Punch out at least this many minutes after shift end to count as overtime.
+      overtimeMin: cal.data?.overtime_min_minutes ?? DEFAULT_SHIFT.overtimeMin,
     },
   };
 }
 
-// Saves the company shift. start / end: 'HH:MM' (24-hour), grace: minutes.
-export async function saveShift({ start, end, grace }) {
+// Saves the company shift. start / end: 'HH:MM' (24-hour), grace / overtimeMin: minutes.
+export async function saveShift({ start, end, grace, overtimeMin }) {
   const s = parseTime(start);
   const e = parseTime(end);
   const g = Number(String(grace).trim());
@@ -49,11 +51,14 @@ export async function saveShift({ start, end, grace }) {
   if (!e) return 'Shift end is not valid. Use 24-hour format, e.g. 18:00';
   if (s === e) return 'Shift start and end cannot be the same.';
   if (!Number.isInteger(g) || g < 0 || g > 180) return 'Grace must be a whole number of minutes between 0 and 180.';
+  const o = Number(String(overtimeMin).trim());
+  if (!Number.isInteger(o) || o < 0 || o > 240) return 'Overtime minimum must be a whole number of minutes between 0 and 240.';
   const { error } = await db().from('calendar').upsert({
     id: 'default',
     shift_start: s,
     shift_end: e,
     grace_minutes: g,
+    overtime_min_minutes: o,
     updated_at: new Date().toISOString(),
   });
   if (error) return errorMessage(error);

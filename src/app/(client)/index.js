@@ -6,6 +6,7 @@ import { dayInfo, useCalendar } from '../../data/calendar';
 import AttendanceEntry from '../../components/attendance/AttendanceEntry';
 import { Avatar } from '../../components/admin/ui';
 import LateBadge from '../../components/admin/LateBadge';
+import OvertimeBadge from '../../components/admin/OvertimeBadge';
 import MyLeaves from '../../components/leave/MyLeaves';
 import { useLeaveRequests } from '../../data/leave';
 import { useSession } from '../../data/session';
@@ -16,6 +17,7 @@ import {
   STATUS_ORDER,
   DAY_KIND,
   LATE_STYLE,
+  OVERTIME_STYLE,
   daysOfMonth,
   offDayFor,
   summariseMonth,
@@ -59,7 +61,7 @@ export default function MyAttendance() {
     ...offRows,
   ].sort((a, b) => b.date.localeCompare(a.date));
   // Summary counts company holidays as Holiday and approved leave as Leave.
-  const { counts, minutes: totalMinutes, late: lateDays } = summariseMonth(byDate, month, null, calendar, approved);
+  const { counts, minutes: totalMinutes, late: lateDays, overtime: overtimeMinutes } = summariseMonth(byDate, month, null, calendar, approved);
   const offDay = byDate[date] ? dayInfo(date, calendar) : offDayFor(date, calendar, approved);
 
   return (
@@ -142,6 +144,10 @@ export default function MyAttendance() {
           <Text style={[styles.pillValue, { color: LATE_STYLE.color }]}>{lateDays}</Text>
           <Text style={[styles.pillLabel, { color: LATE_STYLE.color }]}>Late</Text>
         </View>
+        <View style={[styles.pill, { backgroundColor: OVERTIME_STYLE.bg }]}>
+          <Text style={[styles.pillValue, { color: OVERTIME_STYLE.color }]}>{formatDuration(overtimeMinutes) || '0h'}</Text>
+          <Text style={[styles.pillLabel, { color: OVERTIME_STYLE.color }]}>Overtime</Text>
+        </View>
         <View style={[styles.pill, { backgroundColor: COLORS.chipBg }]}>
           <Text style={[styles.pillValue, { color: COLORS.text }]}>{formatDuration(totalMinutes) || '0h'}</Text>
           <Text style={[styles.pillLabel, { color: COLORS.text }]}>Worked</Text>
@@ -175,7 +181,12 @@ export default function MyAttendance() {
                   <Text style={styles.rowTimes}>
                     {r.off ? r.off.name : r.inTime ? `${r.inTime} – ${r.outTime || '…'}` : r.remark || '—'}
                   </Text>
-                  {!r.off ? <LateBadge minutes={r.lateMinutes} compact /> : null}
+                  {!r.off && (r.lateMinutes > 0 || r.overtimeMinutes > 0) ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      <LateBadge minutes={r.lateMinutes} compact />
+                      <OvertimeBadge minutes={r.overtimeMinutes} compact />
+                    </View>
+                  ) : null}
                 </View>
                 <Text style={styles.rowHours}>{mins != null ? formatDuration(mins) : ''}</Text>
               </Pressable>

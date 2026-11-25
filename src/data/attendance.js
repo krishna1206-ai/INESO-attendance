@@ -35,6 +35,8 @@ export const DAY_KIND = {
 
 // Late badge colours (punch in after shift start + grace).
 export const LATE_STYLE = { color: '#C2410C', bg: '#FFEDD5', icon: 'clock-alert-outline' };
+// Overtime badge colours (punch out after shift end + minimum).
+export const OVERTIME_STYLE = { color: '#1D4ED8', bg: '#DBEAFE', icon: 'clock-plus-outline' };
 
 // Employees may only fill in or change TODAY's entry: past days are locked and
 // future days can't be added.
@@ -97,7 +99,7 @@ export function daysOfMonth(month) {
 // Holiday and weekly offs as weeklyOff, not as "Not filled". If someone worked that day,
 // their entry counts as usual.
 // `leaves`: this employee's approved leave requests (see leave.js); those days count as Leave.
-// `late` counts days punched in after shift start + grace.
+// `late` counts days punched in after shift start + grace; `overtime` totals overtime minutes.
 export function summariseMonth(byDate, month, classify, calendar, leaves) {
   const counts = Object.fromEntries(STATUS_ORDER.map((k) => [k, 0]));
   let minutes = 0;
@@ -105,6 +107,7 @@ export function summariseMonth(byDate, month, classify, calendar, leaves) {
   let outside = 0;
   let weeklyOff = 0;
   let late = 0;
+  let overtime = 0; // minutes
   for (const date of daysOfMonth(month)) {
     const r = byDate[date];
     if (!r) {
@@ -118,9 +121,10 @@ export function summariseMonth(byDate, month, classify, calendar, leaves) {
     if (counts[r.status] != null) counts[r.status] += 1;
     minutes += workedMinutes(r.inTime, r.outTime) ?? 0;
     if (r.lateMinutes > 0) late += 1;
+    overtime += r.overtimeMinutes > 0 ? r.overtimeMinutes : 0;
     if (classify && punchedOutsideOffice(r, classify)) outside += 1;
   }
-  return { counts, minutes, notFilled, outside, weeklyOff, late };
+  return { counts, minutes, notFilled, outside, weeklyOff, late, overtime };
 }
 
 // Why a day without an attendance entry isn't "Not filled": a company holiday, a weekly off,
@@ -247,7 +251,7 @@ export function punchedOutsideOffice(record, classify) {
 // Reading
 
 const COLUMNS =
-  'id, employee_id, date, status, in_time, out_time, in_at, out_at, late_minutes, remark, locations, updated_at';
+  'id, employee_id, date, status, in_time, out_time, in_at, out_at, late_minutes, overtime_minutes, remark, locations, updated_at';
 
 function mapRow(r) {
   return {
@@ -259,6 +263,7 @@ function mapRow(r) {
     outTime: r.out_time,
     inAt: r.in_at,
     lateMinutes: r.late_minutes ?? 0,
+    overtimeMinutes: r.overtime_minutes ?? 0,
     outAt: r.out_at,
     remark: r.remark,
     locations: Array.isArray(r.locations) ? r.locations : [],

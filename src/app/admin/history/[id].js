@@ -27,6 +27,7 @@ import { useOffice } from '../../../data/settings';
 import { useCalendar } from '../../../data/calendar';
 import { useLeaveRequests } from '../../../data/leave';
 import LateBadge from '../../../components/admin/LateBadge';
+import OvertimeBadge from '../../../components/admin/OvertimeBadge';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -98,6 +99,7 @@ export default function EmployeeReport() {
         ))}
         <Tile label="Weekly off" value={summary.weeklyOff} color={DAY_KIND.weeklyOff.color} bg={DAY_KIND.weeklyOff.bg} />
         <Tile label="Late" value={summary.late} color="#C2410C" bg="#FFEDD5" />
+        <Tile label="Overtime" value={formatDuration(summary.overtime) || '0h'} color="#1D4ED8" bg="#DBEAFE" />
         <Tile label="Not filled" value={summary.notFilled} color="#9A5B00" bg="#FFF4E0" />
         <Tile label="Outside office" value={summary.outside} color={COLORS.danger} bg="#FDECEC" />
         <Tile label="Worked" value={formatDuration(summary.minutes) || '0h'} color={COLORS.white} bg={COLORS.navy} />
@@ -147,6 +149,7 @@ export default function EmployeeReport() {
                 <View style={[styles.colTime, { gap: 4 }]}>
                   <Text style={styles.td}>{times}</Text>
                   <LateBadge minutes={r?.lateMinutes} compact />
+                  <OvertimeBadge minutes={r?.overtimeMinutes} compact />
                 </View>
                 <Text style={[styles.td, styles.colHours]}>{mins != null ? formatDuration(mins) : '—'}</Text>
                 <View style={styles.colLoc}>{locationEl ?? <Text style={styles.muted}>—</Text>}</View>
@@ -166,6 +169,7 @@ export default function EmployeeReport() {
                         </Text>
                       ) : null}
                       <LateBadge minutes={r?.lateMinutes} compact />
+                      <OvertimeBadge minutes={r?.overtimeMinutes} compact />
                     </View>
                     {remark ? <Text style={styles.sub}>{remark}</Text> : null}
                     {locationEl}

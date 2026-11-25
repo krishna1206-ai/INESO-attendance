@@ -91,6 +91,7 @@ export default function AdminHistory() {
               <Text style={[styles.th, styles.colNum]}>NOT FILLED</Text>
               <Text style={[styles.th, styles.colNum]}>OUTSIDE</Text>
               <Text style={[styles.th, styles.colNum]}>LATE</Text>
+              <Text style={[styles.th, styles.colNum]}>OVERTIME</Text>
               <Text style={[styles.th, styles.colNum]}>WORKED</Text>
               <View style={styles.colGo} />
             </View>
@@ -131,6 +132,7 @@ export default function AdminHistory() {
                     <Text style={[styles.num, styles.colNum]}>{s.notFilled}</Text>
                     <Text style={[styles.num, styles.colNum, s.outside > 0 && { color: COLORS.danger }]}>{s.outside}</Text>
                     <Text style={[styles.num, styles.colNum, s.late > 0 && { color: '#C2410C' }]}>{s.late}</Text>
+                    <Text style={[styles.num, styles.colNum, s.overtime > 0 && { color: '#1D4ED8' }]}>{formatDuration(s.overtime) || '0h'}</Text>
                     <Text style={[styles.num, styles.colNum]}>{formatDuration(s.minutes) || '0h'}</Text>
                     <View style={styles.colGo}>
                       <Feather name="chevron-right" size={18} color={COLORS.muted} />
@@ -149,6 +151,7 @@ export default function AdminHistory() {
                       <Chip label="Not filled" value={s.notFilled} color={COLORS.text} bg={COLORS.chipBg} />
                       {s.outside > 0 ? <Chip label="Outside" value={s.outside} color={COLORS.danger} bg="#FDECEC" /> : null}
                       {s.late > 0 ? <Chip label="Late" value={s.late} color="#C2410C" bg="#FFEDD5" /> : null}
+                      {s.overtime > 0 ? <Chip label="Overtime" value={formatDuration(s.overtime)} color="#1D4ED8" bg="#DBEAFE" /> : null}
                     </View>
                   </>
                 )}

@@ -23,6 +23,7 @@ import { useOffice } from '../../data/settings';
 import { dayInfo, useCalendar } from '../../data/calendar';
 import { LEAVE_TYPES, approvedByEmployee, leaveOn, useLeaveRequests } from '../../data/leave';
 import LateBadge from '../../components/admin/LateBadge';
+import OvertimeBadge from '../../components/admin/OvertimeBadge';
 import { COLORS } from '../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -58,6 +59,7 @@ export default function AdminAttendance() {
   const outsideCount = rows.filter((r) => r.outside).length;
   const lateCount = rows.filter((r) => r.record?.lateMinutes > 0).length;
   const leaveCount = rows.filter((r) => r.onLeave).length;
+  const overtimeCount = rows.filter((r) => r.record?.overtimeMinutes > 0).length;
   const visible = onlyOutside ? rows.filter((r) => r.outside) : rows;
 
   return (
@@ -110,6 +112,7 @@ export default function AdminAttendance() {
           <Pill value={`${filled}/${employees.length}`} label="Filled in" color={COLORS.text} bg={COLORS.chipBg} />
           <Pill value={outsideCount} label="Outside office" color={COLORS.danger} bg="#FDECEC" />
           <Pill value={lateCount} label="Late" color="#C2410C" bg="#FFEDD5" />
+          <Pill value={overtimeCount} label="Overtime" color="#1D4ED8" bg="#DBEAFE" />
           {leaveCount > 0 ? <Pill value={leaveCount} label="On leave" color="#6B46C1" bg="#F1ECFD" /> : null}
         </View>
         <Pressable
@@ -171,6 +174,7 @@ export default function AdminAttendance() {
                   <Text style={styles.td}>{onLeave ? `${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}` : times}</Text>
                   {mins != null ? <Text style={styles.sub}>{formatDuration(mins)}</Text> : null}
                   <LateBadge minutes={record?.lateMinutes} compact />
+                  <OvertimeBadge minutes={record?.overtimeMinutes} compact />
                 </View>
                 <View style={styles.colLoc}>{locationEl}</View>
               </View>
@@ -196,7 +200,10 @@ export default function AdminAttendance() {
                 ) : onLeave ? (
                   <Text style={styles.sub}>{`${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}`}</Text>
                 ) : null}
-                <LateBadge minutes={record?.lateMinutes} />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  <LateBadge minutes={record?.lateMinutes} />
+                  <OvertimeBadge minutes={record?.overtimeMinutes} />
+                </View>
                 {locationEl}
               </View>
             );

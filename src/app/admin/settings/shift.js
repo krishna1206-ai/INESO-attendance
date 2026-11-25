@@ -14,6 +14,7 @@ export default function ShiftSettings() {
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [grace, setGrace] = useState('');
+  const [overtimeMin, setOvertimeMin] = useState('');
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -23,7 +24,8 @@ export default function ShiftSettings() {
     setStart(shift.start);
     setEnd(shift.end);
     setGrace(String(shift.grace));
-  }, [shift.start, shift.end, shift.grace]);
+    setOvertimeMin(String(shift.overtimeMin));
+  }, [shift.start, shift.end, shift.grace, shift.overtimeMin]);
 
   const touch = () => {
     setError(null);
@@ -31,11 +33,20 @@ export default function ShiftSettings() {
   };
   const save = async () => {
     setBusy(true);
-    const message = await saveShift({ start, end, grace });
+    const message = await saveShift({ start, end, grace, overtimeMin });
     setBusy(false);
     if (message) setError(message);
     else setSaved(true);
   };
+
+  // "Overtime from 18:30" preview.
+  const overtimeAfter = (() => {
+    const m = end.match(/^(\d{1,2}):(\d{2})$/);
+    const o = Number(overtimeMin);
+    if (!m || !Number.isFinite(o)) return null;
+    const total = Number(m[1]) * 60 + Number(m[2]) + Math.max(o, 1);
+    return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  })();
 
   // "Late after 09:10" preview.
   const lateAfter = (() => {
@@ -60,8 +71,9 @@ export default function ShiftSettings() {
             <Text style={styles.cardTitle}>Company shift</Text>
             <Text style={styles.cardText}>
               An employee who punches in as Present after the shift start plus the grace minutes is marked
-              Late, with how many minutes late. It is worked out at the moment they punch in, so changing the
-              shift later doesn't change past days. Half Day isn't marked Late.
+              Late, with how many minutes late. Punching out after the shift end (by at least the overtime
+              minimum) counts as overtime. Both are worked out at the moment of punching, so changing the shift
+              later doesn't change past days. Half Day doesn't count for Late or overtime.
             </Text>
           </View>
         </View>
@@ -107,16 +119,29 @@ export default function ShiftSettings() {
                   accessibilityLabel="Grace minutes"
                 />
               </Field>
+              <Field label="OVERTIME MINIMUM (MINUTES)">
+                <TextInput
+                  value={overtimeMin}
+                  onChangeText={(t) => { setOvertimeMin(t); touch(); }}
+                  placeholder="30"
+                  placeholderTextColor={COLORS.muted}
+                  style={styles.input}
+                  maxLength={3}
+                  keyboardType="number-pad"
+                  accessibilityLabel="Overtime minimum minutes"
+                />
+              </Field>
             </View>
             <Text style={styles.hint}>
               24-hour format, e.g. 09:00 and 18:00.
               {lateAfter ? ` Punching in after ${lateAfter} will be marked Late.` : ''}
+              {overtimeAfter ? ` Punching out at ${overtimeAfter} or later counts as overtime (counted from ${end}).` : ''}
             </Text>
 
             {error ? <Text style={styles.error}>{error}</Text> : null}
 
             <View style={styles.footer}>
-              <Text style={styles.savedText}>{saved ? '✓ Saved' : `Current: ${shift.start} – ${shift.end}, ${shift.grace} min grace`}</Text>
+              <Text style={styles.savedText}>{saved ? '✓ Saved' : `Current: ${shift.start} – ${shift.end}, ${shift.grace} min grace, overtime after ${shift.overtimeMin} min`}</Text>
               <Button label="Save" onPress={save} busy={busy} accessibilityLabel="Save shift timing" />
             </View>
           </>
