@@ -420,6 +420,20 @@ grant execute on function public.admin_update_employee(uuid, text, text, text, u
 grant execute on function public.admin_delete_employee(uuid) to authenticated;
 
 -- -----------------------------------------------------------------------------
+-- Table access for signed-in users (newer Supabase projects don't grant this by default).
+-- Row Level Security above still decides which rows each person sees or changes;
+-- signed-out visitors (anon) get no access at all.
+-- -----------------------------------------------------------------------------
+
+grant usage on schema public to authenticated;
+grant select on public.departments, public.sub_departments, public.settings,
+                public.profiles, public.attendance to authenticated;
+grant insert, update, delete on public.departments, public.sub_departments, public.settings
+  to authenticated;
+revoke all on public.departments, public.sub_departments, public.settings,
+              public.profiles, public.attendance from anon;
+
+-- -----------------------------------------------------------------------------
 -- Live updates (admin screens refresh when employees punch in)
 -- -----------------------------------------------------------------------------
 
