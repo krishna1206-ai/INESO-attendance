@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Button } from './ui';
 import ConfirmModal from '../ConfirmModal';
+import MonthCalendar from './MonthCalendar';
 import {
   WEEKDAYS,
   addHoliday,
@@ -21,7 +22,7 @@ export default function CalendarSettings() {
   return (
     <>
       <WeeklyOffsCard saved={calendar.weeklyOffs} />
-      <HolidaysCard holidays={calendar.holidays} />
+      <HolidaysCard calendar={calendar} />
     </>
   );
 }
@@ -103,8 +104,10 @@ function WeeklyOffsCard({ saved }) {
   );
 }
 
-function HolidaysCard({ holidays }) {
-  const [date, setDate] = useState('');
+function HolidaysCard({ calendar }) {
+  const { holidays } = calendar;
+  const [viewMonth, setViewMonth] = useState(toDateKey().slice(0, 7));
+  const [date, setDate] = useState(null); // 'YYYY-MM-DD' picked on the calendar
   const [name, setName] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -114,14 +117,15 @@ function HolidaysCard({ holidays }) {
   const today = toDateKey();
   const upcoming = holidays.filter((h) => h.date >= today);
   const past = holidays.filter((h) => h.date < today).reverse();
+  const selectedHoliday = date ? holidays.find((h) => h.date === date) : null;
 
   const add = async () => {
+    if (!date) return setError('Tap a date on the calendar first.');
     setBusy(true);
     const message = await addHoliday({ date, name });
     setBusy(false);
     if (message) setError(message);
     else {
-      setDate('');
       setName('');
       setError(null);
     }
@@ -158,45 +162,68 @@ function HolidaysCard({ holidays }) {
         text="Festival and company holidays. They show as Holiday for everyone and don't count as “Not filled”."
       />
 
-      {/* Add a holiday */}
-      <View style={styles.addRow}>
-        <View style={styles.dateField}>
-          <Text style={styles.label}>DATE</Text>
-          <TextInput
-            value={date}
-            onChangeText={(t) => {
-              setDate(t);
-              setError(null);
-            }}
-            placeholder="DD/MM/YYYY"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            keyboardType="numbers-and-punctuation"
-            maxLength={10}
-            accessibilityLabel="Holiday date"
+      {/* Pick a date on the calendar */}
+      <Text style={styles.label}>1. TAP A DATE</Text>
+      <MonthCalendar
+        month={viewMonth}
+        onMonthChange={setViewMonth}
+        selected={date}
+        onSelect={(key) => {
+          setDate(key);
+          setError(null);
+        }}
+        calendar={calendar}
+      />
+      <Text style={styles.hint}>
+        {calendar.weeklyOffs.length > 0
+          ? `Every ${WEEKDAYS.filter((w) => calendar.weeklyOffs.includes(w.day)).map((w) => w.label).join(' and ')} is already off (Weekly off above), so you don't need to add those one by one.`
+          : 'No weekly off is set.'}
+      </Text>
+
+      {/* Selected date: add a holiday, or delete the one already there */}
+      {!date ? null : selectedHoliday ? (
+        <View style={styles.selectedBox}>
+          <MaterialCommunityIcons name="party-popper" size={20} color="#B7791F" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.holidayName}>{selectedHoliday.name}</Text>
+            <Text style={styles.holidayWeekday}>{formatDateKey(date)}</Text>
+          </View>
+          <Button
+            label="Delete"
+            icon="trash-2"
+            variant="ghost"
+            small
+            onPress={() => setToDelete(selectedHoliday)}
+            accessibilityLabel={`Delete holiday ${selectedHoliday.name}`}
           />
         </View>
-        <View style={styles.nameField}>
-          <Text style={styles.label}>HOLIDAY NAME</Text>
-          <TextInput
-            value={name}
-            onChangeText={(t) => {
-              setName(t);
-              setError(null);
-            }}
-            placeholder="e.g. Diwali"
-            placeholderTextColor={COLORS.muted}
-            style={styles.input}
-            maxLength={80}
-            returnKeyType="done"
-            onSubmitEditing={add}
-            accessibilityLabel="Holiday name"
-          />
-        </View>
-        <View style={styles.addButton}>
-          <Button label="Add" icon="plus" onPress={add} busy={busy} accessibilityLabel="Add holiday" />
-        </View>
-      </View>
+      ) : (
+        <>
+          <Text style={[styles.label, { marginTop: 16 }]}>2. HOLIDAY NAME FOR {formatDateKey(date).toUpperCase()}</Text>
+          <View style={styles.addRow}>
+            <View style={styles.nameField}>
+              <TextInput
+                value={name}
+                onChangeText={(t) => {
+                  setName(t);
+                  setError(null);
+                }}
+                placeholder="e.g. Diwali"
+                placeholderTextColor={COLORS.muted}
+                style={styles.input}
+                maxLength={80}
+                returnKeyType="done"
+                onSubmitEditing={add}
+                autoFocus
+                accessibilityLabel="Holiday name"
+              />
+            </View>
+            <View style={styles.addButton}>
+              <Button label="Add holiday" icon="plus" onPress={add} busy={busy} accessibilityLabel="Add holiday" />
+            </View>
+          </View>
+        </>
+      )}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {/* List */}
@@ -294,6 +321,16 @@ const styles = StyleSheet.create({
   savedText: { fontSize: 13, color: COLORS.body, flexShrink: 1 },
   unsaved: { fontSize: 13, color: '#9A5B00', marginTop: 8 },
   error: { color: COLORS.danger, fontSize: 14, marginTop: 10 },
+  hint: { fontSize: 13, color: COLORS.body, marginTop: 8, lineHeight: 18 },
+  selectedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FEF5E3',
+    borderRadius: 4,
+    padding: 12,
+    marginTop: 16,
+  },
 
   addRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: 12 },
   dateField: { flexBasis: 150, flexGrow: 0, minWidth: 0 },
