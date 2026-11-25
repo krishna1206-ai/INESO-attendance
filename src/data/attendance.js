@@ -1,12 +1,14 @@
-import { createPersistentList } from './store';
+import { supabase, errorMessage } from '../lib/supabase';
+import { invalidate, useRemote } from './remote';
 
-// Attendance entries, stored on this device only (see store.js). Each employee fills in
-// their own day (the company has no punching machine). One record per employee per day:
-//   { id: '<date>_<employeeId>', date: 'YYYY-MM-DD', employeeId, status,
-//     inTime: 'HH:MM' | '', outTime: 'HH:MM' | '', remark, updatedAt,
+// Attendance entries, stored in Supabase (table `attendance`). Each employee fills in their own
+// day (the company has no punching machine). One record per employee per day:
+//   { id, date: 'YYYY-MM-DD', employeeId, status, inTime: 'HH:MM' | '', outTime: 'HH:MM' | '',
+//     inAt, outAt, remark, updatedAt,
 //     locations: [{ latitude, longitude, accuracy, mocked, capturedAt, action }] }
-// In/Out times come only from the Punch In / Punch Out buttons (the device clock at the moment
-// of the tap, also kept as inAt / outAt timestamps) — employees can't type or change them.
+// Writes go through database functions (punch_in, punch_out, save_attendance, clear_attendance)
+// that only allow today's entry for the signed-in employee and take In/Out times from the
+// SERVER clock (India time) — employees can't type or fake them.
 // `locations` logs where the device was on every punch/save (captured automatically; required
 // for Present / Half Day), so the admin can see whether attendance was filled in at the office.
 
@@ -23,8 +25,6 @@ export const STATUS_ORDER = ['present', 'half_day', 'absent', 'leave', 'holiday'
 // future days can't be added.
 export const isEditableDate = (date) => date === toDateKey();
 
-const store = createPersistentList('ineos.attendance.v1');
-const recordId = (date, employeeId) => `${date}_${employeeId}`;
 
 // ---------------------------------------------------------------------------
 // Dates
@@ -133,116 +133,43 @@ export function formatDuration(minutes) {
 
 // ---------------------------------------------------------------------------
 // Actions. Return an error message string, or null on success.
+// (employeeId / date are kept in the signatures for the screens; the database always uses
+// the signed-in employee and today's date in India time.)
+
+const call = async (fn, params) => {
+  const { error } = await supabase.rpc(fn, params);
+  if (error) return errorMessage(error);
+  invalidate('attendance');
+  return null;
+};
 
 // `location` comes from geo.getCurrentLocation(); it is required for Present / Half Day.
 export async function saveAttendance(employeeId, date, { status, remark, location }) {
   if (!isEditableDate(date)) return "Only today's attendance can be filled in or changed.";
-  const info = STATUS[status];
-  if (!info) return 'Please select a status.';
-
-  const list = await store.get();
-  const id = recordId(date, employeeId);
-  const previous = list.find((r) => r.id === id);
-
-  // In/Out times are never typed: they only come from Punch In / Punch Out (the clock at the
-  // moment of the tap). Saving Present / Half Day here just keeps the punched times.
-  let inT = '';
-  let outT = '';
-  if (info.needsTime) {
-    if (!previous?.inTime) return 'Tap “Punch In” to record your arrival time.';
-    inT = previous.inTime;
-    outT = previous.outTime ?? '';
-    if (!location) {
-      return 'Your location is needed to mark yourself present. Please allow location and try again.';
-    }
-  } else if (previous?.inTime) {
-    return `You already punched in at ${previous.inTime} today, so you can't change to ${info.label}.`;
-  }
-  // What this save did, so the admin can see where In and Out were each recorded.
-  const action = !previous
-    ? 'created'
-    : outT && !previous.outTime
-      ? 'out'
-      : 'updated';
-  const locations = [
-    ...(previous?.locations ?? []),
-    ...(location ? [{ ...location, action }] : []),
-  ].slice(-MAX_LOCATIONS);
-
-  const record = {
-    ...previous, // keeps inAt / outAt punch timestamps
-    id,
-    date,
-    employeeId,
-    status,
-    inTime: inT,
-    outTime: outT,
-    remark: (remark ?? '').trim().slice(0, 200),
-    locations,
-    updatedAt: new Date().toISOString(),
-  };
-  return store.save([...list.filter((r) => r.id !== id), record]);
+  if (!STATUS[status]) return 'Please select a status.';
+  return call('save_attendance', { p_status: status, p_remark: remark ?? '', p_location: location ?? null });
 }
 
-const MAX_LOCATIONS = 20;
-
-// Current time as 'HH:MM' (24-hour, device clock).
-const nowHHMM = (d = new Date()) =>
-  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-
-// Punch In: records the arrival time from the clock (not typed) plus location, for today.
-// status must be Present or Half Day. Returns an error message, or null on success.
+// Punch In: the server records the current time (India) plus the location.
 export async function punchIn(employeeId, { status, remark, location }) {
-  const date = toDateKey();
-  const info = STATUS[status];
-  if (!info?.needsTime) return 'Select Present or Half Day to punch in.';
-  if (!location) {
-    return 'Your location is needed to punch in. Please allow location and try again.';
-  }
-  const list = await store.get();
-  const id = recordId(date, employeeId);
-  const previous = list.find((r) => r.id === id);
-  if (previous?.inTime) return `You already punched in at ${previous.inTime} today.`;
-
-  const now = new Date();
-  const record = {
-    id,
-    date,
-    employeeId,
-    status,
-    inTime: nowHHMM(now),
-    inAt: now.toISOString(),
-    outTime: '',
-    remark: (remark ?? '').trim().slice(0, 200),
-    locations: [...(previous?.locations ?? []), { ...location, action: 'in' }].slice(-MAX_LOCATIONS),
-    updatedAt: now.toISOString(),
-  };
-  return store.save([...list.filter((r) => r.id !== id), record]);
+  if (!STATUS[status]?.needsTime) return 'Select Present or Half Day to punch in.';
+  if (!location) return 'Your location is needed to punch in. Please allow location and try again.';
+  return call('punch_in', { p_status: status, p_remark: remark ?? '', p_location: location });
 }
 
-// Punch Out: records the leaving time from the clock plus location, for today.
+// Punch Out: the server records the current time (India) plus the location.
 export async function punchOut(employeeId, { remark, location }) {
-  const date = toDateKey();
-  if (!location) {
-    return 'Your location is needed to punch out. Please allow location and try again.';
-  }
-  const list = await store.get();
-  const id = recordId(date, employeeId);
-  const previous = list.find((r) => r.id === id);
-  if (!previous?.inTime) return 'Punch in first.';
-  if (previous.outTime) return `You already punched out at ${previous.outTime} today.`;
-
-  const now = new Date();
-  const record = {
-    ...previous,
-    outTime: nowHHMM(now),
-    outAt: now.toISOString(),
-    remark: remark == null ? previous.remark : remark.trim().slice(0, 200),
-    locations: [...(previous.locations ?? []), { ...location, action: 'out' }].slice(-MAX_LOCATIONS),
-    updatedAt: now.toISOString(),
-  };
-  return store.save([...list.filter((r) => r.id !== id), record]);
+  if (!location) return 'Your location is needed to punch out. Please allow location and try again.';
+  return call('punch_out', { p_remark: remark ?? null, p_location: location });
 }
+
+export async function clearAttendance(employeeId, date) {
+  if (!isEditableDate(date)) return "Only today's attendance can be changed.";
+  return call('clear_attendance', {});
+}
+
+// ---------------------------------------------------------------------------
+// Locations
 
 // First location recorded for the day (when the employee first filled it in) and the latest.
 export function entryLocations(record) {
@@ -268,38 +195,73 @@ export function punchedOutsideOffice(record, classify) {
   return [p.in, p.out].some((l) => l && (l.mocked || classify(l) === 'outside'));
 }
 
-export async function clearAttendance(employeeId, date) {
-  if (!isEditableDate(date)) return "Only today's attendance can be changed.";
-  const list = await store.get();
-  const id = recordId(date, employeeId);
-  // Punch times are a record of when the employee arrived; they can't be wiped and re-done.
-  if (list.find((r) => r.id === id)?.inTime) return "Punched times can't be cleared.";
-  return store.save(list.filter((r) => r.id !== id));
+// ---------------------------------------------------------------------------
+// Reading
+
+const COLUMNS =
+  'id, employee_id, date, status, in_time, out_time, in_at, out_at, remark, locations, updated_at';
+
+function mapRow(r) {
+  return {
+    id: r.id,
+    date: r.date,
+    employeeId: r.employee_id,
+    status: r.status,
+    inTime: r.in_time,
+    outTime: r.out_time,
+    inAt: r.in_at,
+    outAt: r.out_at,
+    remark: r.remark,
+    locations: Array.isArray(r.locations) ? r.locations : [],
+    updatedAt: r.updated_at,
+  };
 }
 
-// ---------------------------------------------------------------------------
-// Hooks
+async function select(build) {
+  const { data, error } = await build(supabase.from('attendance').select(COLUMNS));
+  if (error) throw error;
+  return data.map(mapRow);
+}
 
-// Every entry, grouped per employee: { byEmployee: { [employeeId]: { [date]: record } }, loading }.
-export function useAllAttendance() {
-  const { items, loading } = store.useList();
+const lastDayOfMonth = (month) => {
+  const [y, m] = month.split('-').map(Number);
+  return `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+};
+
+// Everyone's entries for one month, grouped per employee:
+// { byEmployee: { [employeeId]: { [date]: record } }, loading }. (Admins see all employees;
+// an employee only ever sees their own rows.)
+export function useAttendanceForMonth(month) {
+  const { data, loading } = useRemote(
+    `attendance:month:${month}`,
+    () => select((q) => q.gte('date', `${month}-01`).lte('date', lastDayOfMonth(month))),
+    ['attendance']
+  );
   const byEmployee = {};
-  for (const r of items) (byEmployee[r.employeeId] ??= {})[r.date] = r;
+  for (const r of data ?? []) (byEmployee[r.employeeId] ??= {})[r.date] = r;
   return { byEmployee, loading };
 }
 
 // Every employee's entry for one day: { byEmployee: { [employeeId]: record }, loading }.
 export function useAttendanceForDate(date) {
-  const { items, loading } = store.useList();
+  const { data, loading } = useRemote(
+    `attendance:date:${date}`,
+    () => select((q) => q.eq('date', date)),
+    ['attendance']
+  );
   const byEmployee = {};
-  for (const r of items) if (r.date === date) byEmployee[r.employeeId] = r;
+  for (const r of data ?? []) byEmployee[r.employeeId] = r;
   return { byEmployee, loading };
 }
 
 // All of one employee's entries: { byDate: { [date]: record }, loading }.
 export function useEmployeeAttendance(employeeId) {
-  const { items, loading } = store.useList();
+  const { data, loading } = useRemote(
+    employeeId ? `attendance:employee:${employeeId}` : null,
+    () => select((q) => q.eq('employee_id', employeeId).order('date', { ascending: false })),
+    ['attendance']
+  );
   const byDate = {};
-  for (const r of items) if (r.employeeId === employeeId) byDate[r.date] = r;
+  for (const r of data ?? []) byDate[r.date] = r;
   return { byDate, loading };
 }

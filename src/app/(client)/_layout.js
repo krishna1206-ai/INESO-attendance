@@ -3,9 +3,10 @@ import { Redirect, Stack } from 'expo-router';
 import { useSession } from '../../data/session';
 import { COLORS } from '../../theme';
 
-// Employee pages require a signed-in employee; signed-out visitors are sent to /login.
+// Employee pages require a signed-in employee; signed-out visitors are sent to /login and
+// admins to their panel.
 export default function ClientLayout() {
-  const { employee, loading } = useSession();
+  const { employee, role, loading } = useSession();
 
   if (loading) {
     return (
@@ -15,6 +16,7 @@ export default function ClientLayout() {
     );
   }
   if (!employee) return <Redirect href="/login" />;
+  if (role === 'admin') return <Redirect href="/admin" />;
 
   return (
     <Stack screenOptions={{ headerShown: false }}>

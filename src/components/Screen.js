@@ -62,7 +62,7 @@ export default function Screen({ children }) {
 
 // On phones the name is left out of the header (the page already shows it in large type),
 // so the logo and tagline never get crowded.
-function UserMenu({ name }) {
+export function UserMenu({ name }) {
   const { width } = useWindowDimensions();
   const compact = width < 600;
   return (

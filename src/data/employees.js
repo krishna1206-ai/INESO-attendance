@@ -1,114 +1,108 @@
-import { createPersistentList, newId } from './store';
-import { checkPasswordRules, hashPassword, verifyPassword } from './passwords';
+import { supabase, errorMessage } from '../lib/supabase';
+import { invalidate, useRemote } from './remote';
+import { checkPasswordRules } from './passwords';
 
-// Employees, stored on this device only (see store.js).
-// Shape: [{ id, name, email, departmentId, subDepartmentId, password: { salt, hash },
-//           createdAt, updatedAt? }]
-// email is stored lower-case and is unique; employees sign in with email + password.
+// Employees are Supabase sign-in accounts with a row in `profiles` (role 'employee').
+// Admins create, edit and delete them through database functions (admin_create_employee,
+// admin_update_employee, admin_delete_employee in supabase/schema.sql), which also set the
+// password. Passwords are stored by Supabase Auth, never by the app.
+//
+// Shape used by the screens: { id, name, email, departmentId, subDepartmentId, role, createdAt }
 // subDepartmentId is '' when the department has no sub-departments.
-// The typed password is never stored, only its salted hash (see passwords.js).
-const store = createPersistentList('ineos.employees.v1');
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const normaliseEmail = (email) => (email ?? '').trim().toLowerCase();
 
-// Checks the form. Returns { error } or { value }.
-// `editingId`: the employee being edited (null when adding). When editing, a blank
-// password keeps the current one.
-function validate(input, departments, list, editingId) {
-  const { name, email, departmentId, subDepartmentId, password } = input;
+export const PROFILE_COLUMNS = 'id, role, name, email, department_id, sub_department_id, created_at';
 
-  const dept = departments.find((d) => d.id === departmentId);
-  if (!dept) return { error: 'Please select a department.' };
-
-  const subs = dept.subDepartments ?? [];
-  if (subs.length > 0 && !subs.some((s) => s.id === subDepartmentId)) {
-    return { error: 'Please select a sub-department.' };
-  }
-
-  const trimmed = (name ?? '').trim().replace(/\s+/g, ' ');
-  if (!trimmed) return { error: 'Please enter the employee name.' };
-
-  const mail = normaliseEmail(email);
-  if (!mail) return { error: 'Please enter the employee email.' };
-  if (!EMAIL.test(mail)) return { error: 'Please enter a valid email, e.g. name@ineos.com' };
-  if (list.some((e) => e.id !== editingId && normaliseEmail(e.email) === mail)) {
-    return { error: `${mail} is already used by another employee.` };
-  }
-
-  if (!editingId || password) {
-    const passwordError = checkPasswordRules(password ?? '');
-    if (passwordError) return { error: passwordError };
-  }
-
+export function mapProfile(p) {
   return {
-    value: {
-      name: trimmed,
-      email: mail,
-      departmentId,
-      subDepartmentId: subs.length > 0 ? subDepartmentId : '',
-    },
+    id: p.id,
+    role: p.role,
+    name: p.name,
+    email: p.email,
+    departmentId: p.department_id ?? '',
+    subDepartmentId: p.sub_department_id ?? '',
+    createdAt: p.created_at,
   };
 }
 
+async function fetchEmployees() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(PROFILE_COLUMNS)
+    .eq('role', 'employee')
+    .order('name');
+  if (error) throw error;
+  return data.map(mapProfile);
+}
+
+// Quick checks in the app so the admin gets an answer before the request is sent.
+// The database checks everything again.
+function validate({ name, email, departmentId, subDepartmentId, password }, departments, editing) {
+  const dept = departments.find((d) => d.id === departmentId);
+  if (!dept) return 'Please select a department.';
+  const subs = dept.subDepartments ?? [];
+  if (subs.length > 0 && !subs.some((s) => s.id === subDepartmentId)) {
+    return 'Please select a sub-department.';
+  }
+  if (!(name ?? '').trim()) return 'Please enter the employee name.';
+  const mail = normaliseEmail(email);
+  if (!mail) return 'Please enter the employee email.';
+  if (!EMAIL.test(mail)) return 'Please enter a valid email, e.g. name@ineos.com';
+  if (!editing || password) return checkPasswordRules(password ?? '');
+  return null;
+}
+
+const args = ({ name, email, departmentId, subDepartmentId }, departments) => {
+  const hasSubs = (departments.find((d) => d.id === departmentId)?.subDepartments ?? []).length > 0;
+  return {
+    p_name: (name ?? '').trim().replace(/\s+/g, ' '),
+    p_email: normaliseEmail(email),
+    p_department_id: departmentId,
+    p_sub_department_id: hasSubs ? subDepartmentId : null,
+  };
+};
+
 // Actions return an error message string, or null on success.
 export async function addEmployee(input, departments) {
-  const list = await store.get();
-  const { error, value } = validate(input, departments, list, null);
-  if (error) return error;
-  const password = await hashPassword(input.password);
-  return store.save([
-    ...list,
-    { id: newId(), ...value, password, createdAt: new Date().toISOString() },
-  ]);
+  const invalid = validate(input, departments, false);
+  if (invalid) return invalid;
+  const { error } = await supabase.rpc('admin_create_employee', {
+    ...args(input, departments),
+    p_password: input.password,
+  });
+  if (error) return errorMessage(error);
+  invalidate('profiles');
+  return null;
 }
 
 export async function updateEmployee(id, input, departments) {
-  const list = await store.get();
-  const { error, value } = validate(input, departments, list, id);
-  if (error) return error;
-  // Only replace the stored password when a new one was typed.
-  const password = input.password ? await hashPassword(input.password) : undefined;
-  return store.save(
-    list.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            ...value,
-            ...(password ? { password } : {}),
-            updatedAt: new Date().toISOString(),
-          }
-        : e
-    )
-  );
+  const invalid = validate(input, departments, true);
+  if (invalid) return invalid;
+  const { error } = await supabase.rpc('admin_update_employee', {
+    p_id: id,
+    ...args(input, departments),
+    p_password: input.password || null,
+  });
+  if (error) return errorMessage(error);
+  invalidate('profiles');
+  return null;
 }
-
-export const getAllEmployees = () => store.get();
 
 export async function deleteEmployee(id) {
-  const list = await store.get();
-  return store.save(list.filter((e) => e.id !== id));
+  const { error } = await supabase.rpc('admin_delete_employee', { p_id: id });
+  if (error) return errorMessage(error);
+  invalidate('profiles', 'attendance');
+  return null;
 }
 
-// Employee login: resolves to { employee } or { error }.
-export async function authenticate(email, password) {
-  const mail = normaliseEmail(email);
-  if (!mail || !password) return { error: 'Please enter your email and password.' };
-  const list = await store.get();
-  const employee = list.find((e) => normaliseEmail(e.email) === mail);
-  // Same message whether the email or the password is wrong, so emails can't be probed.
-  const invalid = { error: 'Incorrect email or password.' };
-  if (!employee || !(await verifyPassword(password, employee.password))) return invalid;
-  return { employee };
-}
-
-export const hasPassword = (employee) => Boolean(employee?.password?.hash);
-// Can this employee sign in? Older records may lack an email or password.
-export const canSignIn = (employee) => hasPassword(employee) && Boolean(employee?.email);
+// Every employee account can sign in with its email and the password the admin set.
+export const canSignIn = (employee) => Boolean(employee?.email);
 
 export function useEmployees() {
-  const { items, loading } = store.useList();
-  return { employees: items, loading };
+  const { data, loading } = useRemote('employees', fetchEmployees, ['profiles']);
+  return { employees: data ?? [], loading };
 }
 
 // Department / sub-department names for an employee, tolerant of deleted records.

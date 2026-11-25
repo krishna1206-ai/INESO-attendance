@@ -7,7 +7,7 @@ import { Avatar, EmptyState, PageTitle } from '../../../components/admin/ui';
 import MonthPicker from '../../../components/admin/MonthPicker';
 import { useDepartments } from '../../../data/departments';
 import { describeEmployee, useEmployees } from '../../../data/employees';
-import { formatDuration, monthOf, summariseMonth, toDateKey, useAllAttendance } from '../../../data/attendance';
+import { formatDuration, monthOf, summariseMonth, toDateKey, useAttendanceForMonth } from '../../../data/attendance';
 import { classifyLocation } from '../../../data/geo';
 import { useOffice } from '../../../data/settings';
 import { COLORS } from '../../../theme';
@@ -24,7 +24,7 @@ export default function AdminHistory() {
   const [deptFilter, setDeptFilter] = useState('all');
   const { departments } = useDepartments();
   const { employees } = useEmployees();
-  const { byEmployee } = useAllAttendance();
+  const { byEmployee } = useAttendanceForMonth(month);
   const { office } = useOffice();
   const classify = (l) => classifyLocation(l, office).kind;
 

@@ -1,8 +1,9 @@
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Slot, router, usePathname } from 'expo-router';
-import { AppHeader } from '../../components/Screen';
+import { Redirect, Slot, router, usePathname } from 'expo-router';
+import { AppHeader, UserMenu } from '../../components/Screen';
+import { useSession } from '../../data/session';
 import { COLORS, WIDE_BREAKPOINT } from '../../theme';
 
 // `short` is used on the phone tab bar, where five tabs share the width.
@@ -46,14 +47,26 @@ const NAV = [
 ];
 
 // Admin shell: header + sidebar (wide screens) or tab bar (phones) around every /admin page.
+// Only signed-in admins get in; everyone else is sent to /login (employees to their own page).
 export default function AdminLayout() {
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_BREAKPOINT;
   const pathname = usePathname();
+  const { employee: account, role, loading } = useSession();
+
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color={COLORS.white} />
+      </View>
+    );
+  }
+  if (!account) return <Redirect href="/login" />;
+  if (role !== 'admin') return <Redirect href="/" />;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <AppHeader badge="ADMIN" fullWidth={isWide} />
+      <AppHeader badge="ADMIN" fullWidth={isWide} right={<UserMenu name={account.name} />} />
       <View style={[styles.body, isWide && styles.bodyWide]}>
         {isWide ? (
           <View style={styles.sidebar}>
@@ -61,11 +74,6 @@ export default function AdminLayout() {
             {NAV.map((item) => (
               <SidebarItem key={item.href} item={item} active={item.match(pathname)} />
             ))}
-            <View style={{ flex: 1 }} />
-            <SidebarItem
-              item={{ href: '/', label: 'View client site', icon: 'open-in-new' }}
-              active={false}
-            />
           </View>
         ) : (
           // Phones: three equal tabs that always fit (icon above label), no sideways scrolling.
@@ -131,6 +139,7 @@ function SidebarItem({ item, active }) {
 const SIDEBAR_WIDTH = 248;
 
 const styles = StyleSheet.create({
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.navy },
   safe: { flex: 1, backgroundColor: COLORS.navy },
   body: { flex: 1, backgroundColor: COLORS.pageBg },
   bodyWide: { flexDirection: 'row' },

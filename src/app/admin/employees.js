@@ -191,8 +191,10 @@ export default function AdminEmployees() {
         message={toDelete ? `“${toDelete.name}” will be removed.` : ''}
         onCancel={() => setToDelete(null)}
         onConfirm={async () => {
-          await deleteEmployee(toDelete.id);
+          const error = await deleteEmployee(toDelete.id);
+          if (error) return error; // shown in the dialog
           setToDelete(null);
+          return null;
         }}
       />
     </PageBody>

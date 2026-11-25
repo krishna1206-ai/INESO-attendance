@@ -1,77 +1,87 @@
 import { useEffect, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authenticate, useEmployees } from './employees';
+import { supabase, errorMessage } from '../lib/supabase';
+import { invalidateAll, resetRealtime, useRemote } from './remote';
+import { PROFILE_COLUMNS, mapProfile, normaliseEmail } from './employees';
 
-// Which employee is signed in on this device. Only the employee id is kept.
-// NOTE: this is a device-local login for the prototype. Anyone with access to the browser's
-// storage can change it; real sign-in needs a backend issuing sessions/tokens.
-const SESSION_KEY = 'ineos.session.v1';
+// Sign-in for admins and employees, through Supabase Auth (email + password).
+// The account's role ('admin' | 'employee') comes from the `profiles` table.
 
-let current; // undefined = not loaded yet, null = signed out, string = employee id
-let loadPromise = null;
+let userId; // undefined = not checked yet, null = signed out
+let ready = null;
 const listeners = new Set();
-const notify = () => listeners.forEach((fn) => fn(current));
-
-function ensureLoaded() {
-  if (!loadPromise) {
-    loadPromise = AsyncStorage.getItem(SESSION_KEY)
-      .then((raw) => (raw ? JSON.parse(raw).employeeId ?? null : null))
-      .catch(() => null)
-      .then((id) => {
-        current = id;
-        notify();
-      });
+const setUser = (id) => {
+  if (id === userId) return;
+  const changed = userId !== undefined;
+  userId = id;
+  if (changed) {
+    // A different person: drop cached data and reconnect live updates with their permissions.
+    invalidateAll();
+    resetRealtime();
   }
-  return loadPromise;
+  listeners.forEach((fn) => fn(userId));
+};
+
+function ensureStarted() {
+  if (!ready) {
+    ready = supabase.auth.getSession().then(({ data }) => setUser(data.session?.user?.id ?? null));
+    supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user?.id ?? null));
+  }
+  return ready;
 }
 
-async function setSession(employeeId) {
-  current = employeeId;
-  notify();
-  try {
-    if (employeeId) {
-      await AsyncStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ employeeId, signedInAt: new Date().toISOString() })
-      );
-    } else {
-      await AsyncStorage.removeItem(SESSION_KEY);
-    }
-  } catch {
-    // Storage unavailable: the session still works until the page reloads.
-  }
-}
-
-// Returns an error message, or null when signed in.
+// Resolves to { role } on success or { error } with a message for the login form.
 export async function signIn(email, password) {
-  const { employee, error } = await authenticate(email, password);
-  if (error) return error;
-  await setSession(employee.id);
-  return null;
+  const mail = normaliseEmail(email);
+  if (!mail || !password) return { error: 'Please enter your email and password.' };
+  const { data, error } = await supabase.auth.signInWithPassword({ email: mail, password });
+  if (error) {
+    return {
+      error: /invalid login credentials/i.test(error.message)
+        ? 'Incorrect email or password.'
+        : errorMessage(error),
+    };
+  }
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', data.user.id)
+    .maybeSingle();
+  if (profileError || !profile) {
+    await supabase.auth.signOut();
+    return { error: 'This account is not set up yet. Please contact your admin.' };
+  }
+  setUser(data.user.id);
+  return { role: profile.role };
 }
 
-export const signOut = () => setSession(null);
+export async function signOut() {
+  await supabase.auth.signOut();
+  setUser(null);
+}
 
-// { employee, loading }. employee is null when signed out, or when the signed-in
-// employee was deleted by the admin (then the stale session is cleared).
+// { employee, role, loading }. `employee` is the signed-in account's profile
+// ({ id, name, email, role, departmentId, subDepartmentId }) or null when signed out.
 export function useSession() {
-  const [employeeId, setEmployeeId] = useState(current);
-  const { employees, loading: employeesLoading } = useEmployees();
+  const [id, setId] = useState(userId);
 
   useEffect(() => {
-    const listener = (id) => setEmployeeId(id);
-    listeners.add(listener);
-    if (current !== undefined) listener(current);
-    else ensureLoaded();
-    return () => listeners.delete(listener);
+    listeners.add(setId);
+    if (userId !== undefined) setId(userId);
+    else ensureStarted();
+    return () => listeners.delete(setId);
   }, []);
 
-  const loading = employeeId === undefined || employeesLoading;
-  const employee = employeeId ? employees.find((e) => e.id === employeeId) ?? null : null;
+  const { data: profile, loading: profileLoading } = useRemote(
+    id ? `profile:${id}` : null,
+    async () => {
+      const { data, error } = await supabase.from('profiles').select(PROFILE_COLUMNS).eq('id', id).maybeSingle();
+      if (error) throw error;
+      return data ? mapProfile(data) : null;
+    },
+    ['profiles']
+  );
 
-  useEffect(() => {
-    if (!loading && employeeId && !employee) setSession(null);
-  }, [loading, employeeId, employee]);
-
-  return { employee, loading };
+  const loading = id === undefined || (Boolean(id) && profileLoading);
+  const employee = id && profile ? profile : null;
+  return { employee, role: employee?.role ?? null, loading };
 }

@@ -1,12 +1,13 @@
-import { createPersistentList, newId } from './store';
-import { getAllEmployees } from './employees';
+import { supabase, errorMessage } from '../lib/supabase';
+import { invalidate, useRemote } from './remote';
 
-// Departments (and their sub-departments) are stored on this device only
-// (AsyncStorage; localStorage on web). Replace load/persist with API calls once a backend exists.
+// Departments and their sub-departments, stored in Supabase (tables `departments` and
+// `sub_departments`). Everyone signed in can read them; only admins can change them
+// (Row Level Security, see supabase/schema.sql).
 //
-// Shape: [{ id, name, icon, createdAt,
-//           subDepartments: [{ id, name, imageUri, linkUrl, createdAt }] }]
-const STORAGE_KEY = 'ineos.departments.v1';
+// Shape used by the screens:
+//   [{ id, name, icon, createdAt,
+//      subDepartments: [{ id, name, imageUri, linkUrl, createdAt }] }]
 
 // Chemical-industry icons the admin can pick from when creating a department
 // (MaterialCommunityIcons names). Grouped in rows of 7 to fill the picker evenly.
@@ -37,10 +38,34 @@ export const DEPARTMENT_ICONS = [
   'safety-goggles',
 ];
 
-const store = createPersistentList(STORAGE_KEY, (d) => ({
-  ...d,
-  subDepartments: d.subDepartments ?? [],
-}));
+const TABLES = ['departments', 'sub_departments'];
+
+async function fetchDepartments() {
+  const [deps, subs] = await Promise.all([
+    supabase.from('departments').select('id, name, icon, created_at').order('created_at'),
+    supabase
+      .from('sub_departments')
+      .select('id, department_id, name, image_uri, link_url, created_at')
+      .order('created_at'),
+  ]);
+  if (deps.error) throw deps.error;
+  if (subs.error) throw subs.error;
+  return deps.data.map((d) => ({
+    id: d.id,
+    name: d.name,
+    icon: d.icon,
+    createdAt: d.created_at,
+    subDepartments: subs.data
+      .filter((s) => s.department_id === d.id)
+      .map((s) => ({
+        id: s.id,
+        name: s.name,
+        imageUri: s.image_uri,
+        linkUrl: s.link_url,
+        createdAt: s.created_at,
+      })),
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Validation helpers
@@ -58,58 +83,59 @@ export function normaliseUrl(value) {
   return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+const duplicate = (error, name, where = '') =>
+  error?.code === '23505' ? `"${name}" already exists${where}.` : errorMessage(error);
+
 // ---------------------------------------------------------------------------
 // Actions. Each returns an error message string, or null on success.
 
 export async function addDepartment({ name, icon }) {
-  const cache = await store.get();
-  const trimmed = name.trim();
-  if (!trimmed) return 'Please enter a department name.';
-  if (!icon) return 'Please select an icon.';
-  if (cache.some((d) => d.name.toLowerCase() === trimmed.toLowerCase())) {
-    return `"${trimmed}" already exists.`;
-  }
-  return store.save([
-    ...cache,
-    { id: newId(), name: trimmed, icon, createdAt: new Date().toISOString(), subDepartments: [] },
-  ]);
-}
-
-export async function updateDepartment(id, { name, icon }) {
-  const cache = await store.get();
-  if (!cache.some((d) => d.id === id)) return 'Department not found.';
   const trimmed = (name ?? '').trim();
   if (!trimmed) return 'Please enter a department name.';
   if (!icon) return 'Please select an icon.';
-  if (cache.some((d) => d.id !== id && d.name.toLowerCase() === trimmed.toLowerCase())) {
-    return `"${trimmed}" already exists.`;
-  }
-  return store.save(
-    cache.map((d) =>
-      d.id === id ? { ...d, name: trimmed, icon, updatedAt: new Date().toISOString() } : d
-    )
-  );
+  const { error } = await supabase.from('departments').insert({ name: trimmed, icon });
+  if (error) return duplicate(error, trimmed);
+  invalidate(...TABLES);
+  return null;
+}
+
+export async function updateDepartment(id, { name, icon }) {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return 'Please enter a department name.';
+  if (!icon) return 'Please select an icon.';
+  const { error } = await supabase
+    .from('departments')
+    .update({ name: trimmed, icon, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) return duplicate(error, trimmed);
+  invalidate(...TABLES);
+  return null;
 }
 
 // Deletes a department together with its sub-departments. Refused while employees still
 // belong to it, so nobody is left without a department.
 export async function deleteDepartment(id) {
-  const employees = await getAllEmployees();
-  const count = employees.filter((e) => e.departmentId === id).length;
+  const { count, error: countError } = await supabase
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('department_id', id);
+  if (countError) return errorMessage(countError);
   if (count > 0) {
     return `This department still has ${count} employee${count === 1 ? '' : 's'}. Move them to another department or delete them first.`;
   }
-  const cache = await store.get();
-  return store.save(cache.filter((d) => d.id !== id));
+  const { error } = await supabase.from('departments').delete().eq('id', id);
+  if (error) {
+    return error.code === '23503'
+      ? 'This department still has employees. Move them to another department or delete them first.'
+      : errorMessage(error);
+  }
+  invalidate(...TABLES);
+  return null;
 }
 
-function validateSubDepartment(dept, { name, imageUri, linkUrl }, editingId) {
+function validateSubDepartment({ name, imageUri, linkUrl }) {
   const trimmed = (name ?? '').trim();
   if (!trimmed) return { error: 'Please enter a sub-department name.' };
-  const duplicate = dept.subDepartments.some(
-    (s) => s.id !== editingId && s.name.toLowerCase() === trimmed.toLowerCase()
-  );
-  if (duplicate) return { error: `"${trimmed}" already exists in ${dept.name}.` };
 
   const image = (imageUri ?? '').trim();
   if (image && !image.startsWith('data:image/') && !isHttpUrl(normaliseUrl(image))) {
@@ -122,63 +148,49 @@ function validateSubDepartment(dept, { name, imageUri, linkUrl }, editingId) {
   return {
     value: {
       name: trimmed,
-      imageUri: image.startsWith('data:') ? image : normaliseUrl(image),
-      linkUrl: link,
+      image_uri: image.startsWith('data:') ? image : normaliseUrl(image),
+      link_url: link,
     },
   };
 }
 
-function updateDept(cache, deptId, fn) {
-  return cache.map((d) => (d.id === deptId ? fn(d) : d));
-}
-
 export async function addSubDepartment(deptId, input) {
-  const cache = await store.get();
-  const dept = cache.find((d) => d.id === deptId);
-  if (!dept) return 'Department not found.';
-  const { error, value } = validateSubDepartment(dept, input, null);
-  if (error) return error;
-  return store.save(
-    updateDept(cache, deptId, (d) => ({
-      ...d,
-      subDepartments: [
-        ...d.subDepartments,
-        { id: newId(), ...value, createdAt: new Date().toISOString() },
-      ],
-    }))
-  );
+  const { error: invalid, value } = validateSubDepartment(input);
+  if (invalid) return invalid;
+  const { error } = await supabase.from('sub_departments').insert({ department_id: deptId, ...value });
+  if (error) return duplicate(error, value.name, ' in this department');
+  invalidate(...TABLES);
+  return null;
 }
 
 export async function updateSubDepartment(deptId, subId, input) {
-  const cache = await store.get();
-  const dept = cache.find((d) => d.id === deptId);
-  if (!dept) return 'Department not found.';
-  const { error, value } = validateSubDepartment(dept, input, subId);
-  if (error) return error;
-  return store.save(
-    updateDept(cache, deptId, (d) => ({
-      ...d,
-      subDepartments: d.subDepartments.map((s) =>
-        s.id === subId ? { ...s, ...value, updatedAt: new Date().toISOString() } : s
-      ),
-    }))
-  );
+  const { error: invalid, value } = validateSubDepartment(input);
+  if (invalid) return invalid;
+  const { error } = await supabase
+    .from('sub_departments')
+    .update({ ...value, updated_at: new Date().toISOString() })
+    .eq('id', subId)
+    .eq('department_id', deptId);
+  if (error) return duplicate(error, value.name, ' in this department');
+  invalidate(...TABLES);
+  return null;
 }
 
 export async function deleteSubDepartment(deptId, subId) {
-  const cache = await store.get();
-  return store.save(
-    updateDept(cache, deptId, (d) => ({
-      ...d,
-      subDepartments: d.subDepartments.filter((s) => s.id !== subId),
-    }))
-  );
+  const { error } = await supabase
+    .from('sub_departments')
+    .delete()
+    .eq('id', subId)
+    .eq('department_id', deptId);
+  if (error) return errorMessage(error);
+  invalidate(...TABLES, 'profiles');
+  return null;
 }
 
 // ---------------------------------------------------------------------------
 // Hook
 
 export function useDepartments() {
-  const { items, loading } = store.useList();
-  return { departments: items, loading, addDepartment };
+  const { data, loading } = useRemote('departments', fetchDepartments, TABLES);
+  return { departments: data ?? [], loading, addDepartment };
 }

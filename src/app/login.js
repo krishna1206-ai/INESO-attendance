@@ -17,26 +17,27 @@ import { AppHeader } from '../components/Screen';
 import { signIn, useSession } from '../data/session';
 import { COLORS } from '../theme';
 
-// Employee sign-in with the email and password the admin set in "Add Employee".
+// One sign-in page for everyone. Employees use the email and password the admin set in
+// "Add Employee" and go to their attendance page; admins go to the admin panel.
 export default function Login() {
-  const { employee, loading } = useSession();
+  const { employee: account, role, loading } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  if (!loading && employee) return <Redirect href="/" />;
+  if (!loading && account) return <Redirect href={role === 'admin' ? '/admin' : '/'} />;
 
   const handleSubmit = async () => {
     if (busy) return;
     setBusy(true);
-    const message = await signIn(email, password);
+    const result = await signIn(email, password);
     setBusy(false);
-    if (message) {
-      setError(message);
+    if (result.error) {
+      setError(result.error);
     } else {
-      router.replace('/');
+      router.replace(result.role === 'admin' ? '/admin' : '/');
     }
   };
 
@@ -53,7 +54,7 @@ export default function Login() {
           <View style={styles.card}>
             <View style={styles.cardTop} />
             <View style={styles.cardBody}>
-              <Text style={styles.label}>EMPLOYEE LOGIN</Text>
+              <Text style={styles.label}>INEOS ATTENDANCE</Text>
               <Text style={styles.title}>Sign in</Text>
               <Text style={styles.subtitle}>
                 Use the email and password given to you by your admin.
