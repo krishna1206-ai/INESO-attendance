@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { PageBody } from '../../components/Screen';
-import { Button, PageTitle } from '../../components/admin/ui';
-import CalendarSettings from '../../components/admin/CalendarSettings';
-import { DEFAULT_RADIUS, saveOffice, useOffice } from '../../data/settings';
-import { getCurrentLocation, mapUrl } from '../../data/geo';
-import { COLORS } from '../../theme';
+import { PageBody } from '../../../components/Screen';
+import { Button, PageTitle } from '../../../components/admin/ui';
+import SettingsTabs from '../../../components/admin/SettingsTabs';
+import { DEFAULT_RADIUS, saveOffice, useOffice } from '../../../data/settings';
+import { getCurrentLocation, mapUrl } from '../../../data/geo';
+import { COLORS } from '../../../theme';
 
 // /admin/settings — the office location used to check where attendance was filled in.
 export default function AdminSettings() {
@@ -57,7 +57,8 @@ export default function AdminSettings() {
 
   return (
     <PageBody>
-      <PageTitle label="ADMIN" title="Settings" />
+      <PageTitle label="SETTINGS" title="Office location" />
+      <SettingsTabs />
 
       <View style={styles.card}>
         <View style={styles.cardHead}>
@@ -169,8 +170,6 @@ export default function AdminSettings() {
         )}
       </View>
 
-      {/* Weekly offs and company holidays */}
-      <CalendarSettings />
     </PageBody>
   );
 }
