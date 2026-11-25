@@ -5,11 +5,13 @@ import { router } from 'expo-router';
 import { PageBody } from '../../components/Screen';
 import { Avatar, EmptyState, PageTitle } from '../../components/admin/ui';
 import { PunchLocations } from '../../components/admin/LocationBadge';
+import ConfirmModal from '../../components/ConfirmModal';
 import { useDepartments } from '../../data/departments';
 import { describeEmployee, useEmployees } from '../../data/employees';
 import {
   STATUS,
   DAY_KIND,
+  adminResumeWork,
   punchedOutsideOffice,
   formatDateKey,
   formatDuration,
@@ -35,6 +37,8 @@ export default function AdminAttendance() {
   const today = toDateKey();
   const [date, setDate] = useState(today);
   const [onlyOutside, setOnlyOutside] = useState(false);
+  // Employee whose Out time the admin is about to remove ("Continue working").
+  const [resuming, setResuming] = useState(null);
   const { departments } = useDepartments();
   const { employees } = useEmployees();
   const { byEmployee } = useAttendanceForDate(date);
@@ -152,6 +156,11 @@ export default function AdminAttendance() {
                 <Text style={[styles.badgeText, { color: s?.color ?? COLORS.body }]}>{s?.label ?? 'Not filled'}</Text>
               </View>
             );
+            // Today, after punch out: the admin can reopen the day so they can punch out again.
+            const resumeEl =
+              date === today && record?.inTime && record?.outTime ? (
+                <ResumeButton onPress={() => setResuming({ employee: e, outTime: record.outTime })} />
+              ) : null;
             const locationEl = !record ? (
               <Text style={styles.muted}>—</Text>
             ) : (
@@ -175,6 +184,7 @@ export default function AdminAttendance() {
                   {mins != null ? <Text style={styles.sub}>{formatDuration(mins)}</Text> : null}
                   <LateBadge minutes={record?.lateMinutes} compact />
                   <OvertimeBadge minutes={record?.overtimeMinutes} compact />
+                  {resumeEl}
                 </View>
                 <View style={styles.colLoc}>{locationEl}</View>
               </View>
@@ -204,13 +214,46 @@ export default function AdminAttendance() {
                   <LateBadge minutes={record?.lateMinutes} />
                   <OvertimeBadge minutes={record?.overtimeMinutes} />
                 </View>
+                {resumeEl}
                 {locationEl}
               </View>
             );
           })}
         </View>
       )}
+
+      <ConfirmModal
+        visible={resuming !== null}
+        title="Continue working?"
+        message={
+          resuming
+            ? `${resuming.employee.name} punched out at ${resuming.outTime}. Their Out time (and any overtime) will be removed so they can punch out again when they leave.`
+            : ''
+        }
+        confirmLabel="Continue working"
+        tone="primary"
+        onCancel={() => setResuming(null)}
+        onConfirm={async () => {
+          const message = await adminResumeWork(resuming.employee.id);
+          if (message) return message;
+          setResuming(null);
+        }}
+      />
     </PageBody>
+  );
+}
+
+function ResumeButton({ onPress }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.resume, pressed && { opacity: 0.8 }]}
+      accessibilityRole="button"
+      accessibilityLabel="Continue working"
+    >
+      <MaterialCommunityIcons name="play-circle-outline" size={15} color={COLORS.navy} />
+      <Text style={styles.resumeText}>Continue working</Text>
+    </Pressable>
   );
 }
 
@@ -306,4 +349,18 @@ const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   badgeText: { fontSize: 12, fontWeight: '700' },
   card: { padding: 16, gap: 10 },
+  resume: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.navy,
+    backgroundColor: COLORS.white,
+  },
+  resumeText: { color: COLORS.navy, fontSize: 12, fontWeight: '700' },
 });

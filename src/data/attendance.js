@@ -208,11 +208,10 @@ export async function punchOut(employeeId, { remark, location }) {
   return call('punch_out', { p_remark: remark ?? null, p_location: location });
 }
 
-// "Continue working": removes today's Out time so the employee can punch out again later.
-// The location is logged (action 'resume') so the admin can see it happened.
-export async function resumeWork(employeeId, { location }) {
-  if (!location) return 'Your location is needed. Please allow location and try again.';
-  return call('resume_work', { p_location: location });
+// Admin "Continue working": removes an employee's Out time for today so they can punch out
+// again later. Logged in the day's locations as action 'resume' (by admin).
+export async function adminResumeWork(employeeId) {
+  return call('admin_resume_work', { p_employee_id: employeeId });
 }
 
 export async function clearAttendance(employeeId, date) {

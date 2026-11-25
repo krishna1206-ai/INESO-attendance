@@ -11,7 +11,6 @@ import {
   isOvernight,
   punchIn,
   punchOut,
-  resumeWork,
   saveAttendance,
   workedMinutes,
 } from '../../data/attendance';
@@ -92,8 +91,6 @@ export default function AttendanceEntry({ employeeId, date, record }) {
     run((location) => punchIn(employeeId, { status, remark, location }), 'Punched in', true);
   const handlePunchOut = () =>
     run((location) => punchOut(employeeId, { remark, location }), 'Punched out', true);
-  const handleResume = () =>
-    run((location) => resumeWork(employeeId, { location }), 'Out time removed — punch out again when you leave', true);
   const handleSave = () =>
     run(
       (location) => saveAttendance(employeeId, date, { status, remark, location }),
@@ -182,23 +179,6 @@ export default function AttendanceEntry({ employeeId, date, record }) {
                   {isOvernight(record.inTime, record.outTime) ? ' (out next day)' : ''}
                 </Text>
               </View>
-              {/* Punched out too early / still working: remove the Out time and carry on. */}
-              <Pressable
-                onPress={handleResume}
-                disabled={Boolean(busy)}
-                style={({ pressed }) => [styles.resume, (pressed || busy) && { opacity: 0.8 }]}
-                accessibilityRole="button"
-                accessibilityLabel="Continue working"
-              >
-                {busy ? (
-                  <ActivityIndicator color={COLORS.navy} />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons name="play-circle-outline" size={18} color={COLORS.navy} />
-                    <Text style={styles.resumeText}>Still working? Continue working</Text>
-                  </>
-                )}
-              </Pressable>
             </>
           )}
 
@@ -490,22 +470,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   doneText: { color: '#1E7B4A', fontSize: 15, fontWeight: '700', flexShrink: 1 },
-  resume: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: COLORS.navy,
-    backgroundColor: COLORS.white,
-    minHeight: 42,
-  },
-  resumeText: { color: COLORS.navy, fontSize: 14, fontWeight: '700' },
 
   hint: { fontSize: 13, color: COLORS.body, marginTop: 10 },
   input: {
