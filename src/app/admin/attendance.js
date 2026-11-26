@@ -216,7 +216,7 @@ export default function AdminAttendance() {
                         </Text>
                         <LateBadge minutes={record.lateMinutes} />
                       </View>
-                      <LocationBadge location={punchLocations(record).in} office={office} compact />
+                      <LocationBadge location={punchLocations(record).in} office={office} compact hideWhere />
                     </View>
                     {/* Punch out: time + overtime (or still working), and where */}
                     <View style={[styles.colPunch, styles.punchCell]}>
@@ -228,7 +228,7 @@ export default function AdminAttendance() {
                             </Text>
                             <OvertimeBadge minutes={record.overtimeMinutes} />
                           </View>
-                          <LocationBadge location={punchLocations(record).out} office={office} compact />
+                          <LocationBadge location={punchLocations(record).out} office={office} compact hideWhere />
                         </>
                       ) : (
                         <View style={styles.working}>
