@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-na
 import { Feather } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { PageBody } from '../../../components/Screen';
-import { Avatar, EmptyState } from '../../../components/admin/ui';
+import { Avatar, Button, EmptyState } from '../../../components/admin/ui';
+import { exportEmployeeMonth } from '../../../data/exportCsv';
 import MonthPicker from '../../../components/admin/MonthPicker';
 import { PunchLocations } from '../../../components/admin/LocationBadge';
 import { useDepartments } from '../../../data/departments';
@@ -49,6 +50,7 @@ export default function EmployeeReport() {
   const { office } = useOffice();
   const { calendar } = useCalendar();
   const { requests } = useLeaveRequests();
+  const [exportError, setExportError] = useState(null);
 
   const employee = employees.find((e) => e.id === id);
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/admin/history'));
@@ -92,6 +94,21 @@ export default function EmployeeReport() {
       </View>
 
       <MonthPicker month={month} onChange={setMonth} />
+
+      <View style={styles.exportRow}>
+        <Button
+          label="Download report (CSV)"
+          icon="download"
+          variant="outline"
+          small
+          onPress={() =>
+            setExportError(
+              exportEmployeeMonth({ month, employee, departments, byDate, leaves: approved, ctx: { office, calendar } })
+            )
+          }
+        />
+        {exportError ? <Text style={styles.exportError}>{exportError}</Text> : null}
+      </View>
 
       {/* Summary */}
       <View style={styles.tiles}>
@@ -205,6 +222,8 @@ const styles = StyleSheet.create({
   label: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   name: { fontSize: 26, fontWeight: '800', color: COLORS.text, marginTop: 2 },
   sub: { fontSize: 13, color: COLORS.body, marginTop: 2 },
+  exportRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 },
+  exportError: { color: COLORS.danger, fontSize: 14 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 },
   tile: { minWidth: 96, flexGrow: 1, flexBasis: 96, borderRadius: 4, paddingHorizontal: 14, paddingVertical: 12 },
   tileValue: { fontSize: 24, fontWeight: '800' },

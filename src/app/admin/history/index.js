@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } fro
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { PageBody } from '../../../components/Screen';
-import { Avatar, EmptyState, PageTitle } from '../../../components/admin/ui';
+import { Avatar, Button, EmptyState, PageTitle } from '../../../components/admin/ui';
+import { exportMonthDetail, exportMonthSummary } from '../../../data/exportCsv';
 import MonthPicker from '../../../components/admin/MonthPicker';
 import { useDepartments } from '../../../data/departments';
 import { describeEmployee, useEmployees } from '../../../data/employees';
@@ -24,6 +25,7 @@ export default function AdminHistory() {
   const [month, setMonth] = useState(monthOf(toDateKey()));
   const [query, setQuery] = useState('');
   const [deptFilter, setDeptFilter] = useState('all');
+  const [exportError, setExportError] = useState(null);
   const { departments } = useDepartments();
   const { employees } = useEmployees();
   const { byEmployee } = useAttendanceForMonth(month);
@@ -40,11 +42,28 @@ export default function AdminHistory() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((e) => ({ employee: e, summary: summariseMonth(byEmployee[e.id] ?? {}, month, classify, calendar, approved[e.id]) }));
 
+  // CSV of the month for the employees shown (search + department filter apply).
+  const runExport = (fn) =>
+    setExportError(
+      fn({
+        month,
+        employees: rows.map((r) => r.employee),
+        departments,
+        byEmployee,
+        approved,
+        ctx: { office, calendar },
+      })
+    );
+
   const open = (e) => router.push(`/admin/history/${e.id}?month=${month}`);
 
   return (
     <PageBody>
-      <PageTitle label="REPORTS" title="Attendance History" subtitle="Select an employee to see their full report." />
+      <PageTitle label="REPORTS" title="Attendance History" subtitle="Select an employee to see their full report.">
+        <Button label="Download summary" icon="download" onPress={() => runExport(exportMonthSummary)} accessibilityLabel="Download month summary (CSV)" />
+        <Button label="Daily detail" icon="download" variant="outline" onPress={() => runExport(exportMonthDetail)} accessibilityLabel="Download daily detail (CSV)" />
+      </PageTitle>
+      {exportError ? <Text style={styles.exportError}>{exportError}</Text> : null}
 
       <MonthPicker month={month} onChange={setMonth} />
 
@@ -175,6 +194,7 @@ function Chip({ label, value, color, bg }) {
 
 const styles = StyleSheet.create({
   toolbar: { gap: 12, marginBottom: 16 },
+  exportError: { color: COLORS.danger, fontSize: 14, marginBottom: 12 },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
