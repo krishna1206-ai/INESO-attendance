@@ -211,7 +211,9 @@ export default function AdminAttendance() {
                     {/* Punch in: time + Late, and where it was made */}
                     <View style={[styles.colPunch, styles.punchCell]}>
                       <View style={styles.punchLine}>
-                        <Text style={styles.punchTime}>{record.inTime}</Text>
+                        <Text style={[styles.punchTime, { color: punchColor(punchLocations(record).in, office) }]}>
+                          {record.inTime}
+                        </Text>
                         <LateBadge minutes={record.lateMinutes} />
                       </View>
                       <LocationBadge location={punchLocations(record).in} office={office} compact />
@@ -221,7 +223,9 @@ export default function AdminAttendance() {
                       {record.outTime ? (
                         <>
                           <View style={styles.punchLine}>
-                            <Text style={styles.punchTime}>{record.outTime}</Text>
+                            <Text style={[styles.punchTime, { color: punchColor(punchLocations(record).out, office) }]}>
+                              {record.outTime}
+                            </Text>
                             <OvertimeBadge minutes={record.overtimeMinutes} />
                           </View>
                           <LocationBadge location={punchLocations(record).out} office={office} compact />
@@ -312,6 +316,15 @@ export default function AdminAttendance() {
       <CorrectionModal target={correcting} onClose={() => setCorrecting(null)} />
     </PageBody>
   );
+}
+
+// Punch time colour: green when made at the office, red when outside or without a location.
+// Stays neutral while the office location isn't set, since nothing can be checked.
+function punchColor(location, office) {
+  const { kind } = classifyLocation(location, office);
+  if (kind === 'office') return '#1E7B4A';
+  if (kind === 'unknown') return COLORS.text;
+  return COLORS.danger;
 }
 
 function ActionButton({ icon, label, onPress }) {
