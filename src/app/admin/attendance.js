@@ -47,6 +47,7 @@ export default function AdminAttendance() {
   const { office } = useOffice();
   const { calendar } = useCalendar();
   const offDay = dayInfo(date, calendar);
+  const officeTime = `${calendar.shift.start} – ${calendar.shift.end}`;
   const { requests } = useLeaveRequests();
   const approved = approvedByEmployee(requests);
 
@@ -141,6 +142,7 @@ export default function AdminAttendance() {
           {asTable ? (
             <View style={[styles.tr, styles.thead]}>
               <Text style={[styles.th, styles.colName]}>EMPLOYEE</Text>
+              <Text style={[styles.th, styles.colOffice]}>OFFICE TIME</Text>
               <Text style={[styles.th, styles.colStatus]}>STATUS</Text>
               <Text style={[styles.th, styles.colPunch]}>PUNCH IN</Text>
               <Text style={[styles.th, styles.colPunch]}>PUNCH OUT</Text>
@@ -181,6 +183,9 @@ export default function AdminAttendance() {
                       {subDepartmentName !== '—' ? ` · ${subDepartmentName}` : ''}
                     </Text>
                   </View>
+                </View>
+                <View style={styles.colOffice}>
+                  <Text style={styles.officeTime}>{offDay ? '—' : officeTime}</Text>
                 </View>
                 <View style={styles.colStatus}>{statusEl}</View>
                 {record?.inTime ? (
@@ -240,6 +245,7 @@ export default function AdminAttendance() {
                   </View>
                   {statusEl}
                 </View>
+                {!offDay ? <Text style={styles.sub}>Office time {officeTime}</Text> : null}
                 {record ? (
                   <Text style={styles.td}>
                     {times}
@@ -376,8 +382,10 @@ const styles = StyleSheet.create({
   tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
   trBorder: { borderTopWidth: 1, borderTopColor: COLORS.border },
   th: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
-  colName: { flex: 2.4 },
-  colStatus: { flex: 1.2 },
+  colName: { flex: 2.2 },
+  colOffice: { flex: 1.3 },
+  officeTime: { fontSize: 15, fontWeight: '600', color: COLORS.body },
+  colStatus: { flex: 1.1 },
   colPunch: { flex: 2 },
   colPunchBoth: { flex: 4 },
   colHours: { flex: 0.9 },
