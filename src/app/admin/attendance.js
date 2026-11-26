@@ -32,7 +32,7 @@ import LateBadge from '../../components/admin/LateBadge';
 import OvertimeBadge from '../../components/admin/OvertimeBadge';
 import { COLORS } from '../../theme';
 
-const TABLE_BREAKPOINT = 1000;
+const TABLE_BREAKPOINT = 1200;
 
 // /admin/attendance — everyone's attendance for a day, with where each entry was filled in.
 export default function AdminAttendance() {
@@ -409,13 +409,14 @@ const styles = StyleSheet.create({
   trBorder: { borderTopWidth: 1, borderTopColor: COLORS.border },
   th: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   colName: { flex: 2.2 },
-  colOffice: { flex: 1.3 },
+  // Widths sized to their content so the gaps between columns look even.
+  colOffice: { flex: 1.2 },
   officeTime: { fontSize: 15, fontWeight: '600', color: COLORS.body },
-  colStatus: { flex: 1.1 },
-  colPunch: { flex: 2 },
-  colPunchBoth: { flex: 4 },
-  colHours: { flex: 0.9 },
-  colAction: { width: 250 },
+  colStatus: { flex: 1.2 },
+  colPunch: { flex: 1.7 },
+  colPunchBoth: { flex: 3.4 },
+  colHours: { flex: 1 },
+  colAction: { width: 300 },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   punchCell: { gap: 6 },
