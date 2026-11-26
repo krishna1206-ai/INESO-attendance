@@ -160,7 +160,6 @@ export default function AdminAttendance() {
             const s = record ? STATUS[record.status] : offDay ? DAY_KIND[offDay.kind] : onLeave ? DAY_KIND.leave : null;
             const mins = record ? workedMinutes(record.inTime, record.outTime) : null;
             const { departmentName, subDepartmentName } = describeEmployee(e, departments);
-            const times = record?.inTime ? `${record.inTime} – ${record.outTime || '…'}` : '—';
             const statusEl = (
               <View style={[styles.badge, { backgroundColor: s?.bg ?? COLORS.chipBg }]}>
                 <Text style={[styles.badgeText, { color: s?.color ?? COLORS.body }]}>{s?.label ?? 'Not filled'}</Text>
@@ -182,12 +181,6 @@ export default function AdminAttendance() {
                 label={record ? 'Edit' : 'Add'}
                 onPress={() => setCorrecting({ employee: e, date, record })}
               />
-            );
-            const editedEl = <EditedBadge record={record} compact={!asTable} />;
-            const locationEl = !record ? (
-              <Text style={styles.muted}>—</Text>
-            ) : (
-              <PunchLocations record={record} office={office} />
             );
             return asTable ? (
               <View key={e.id} style={[styles.tr, i > 0 && styles.trBorder]}>
@@ -267,25 +260,61 @@ export default function AdminAttendance() {
                       {departmentName}
                       {subDepartmentName !== '—' ? ` · ${subDepartmentName}` : ''}
                     </Text>
+                    <EditedBadge record={record} inline />
                   </View>
                   {statusEl}
                 </View>
                 {!offDay ? <Text style={styles.sub}>Office time {officeTime}</Text> : null}
-                {record ? (
-                  <Text style={styles.td}>
-                    {times}
-                    {mins != null ? `  ·  ${formatDuration(mins)}` : ''}
-                    {record.remark ? `  ·  ${record.remark}` : ''}
-                  </Text>
-                ) : onLeave ? (
-                  <Text style={styles.sub}>{`${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}`}</Text>
-                ) : null}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  <LateBadge minutes={record?.lateMinutes} />
-                  <OvertimeBadge minutes={record?.overtimeMinutes} />
-                </View>
-                {editedEl}
-                {locationEl}
+                {record?.inTime ? (
+                  <>
+                    {/* Same as the table: time coloured by where it was punched, plus a map pin */}
+                    <View style={styles.cardPunches}>
+                      <View style={styles.cardPunch}>
+                        <Text style={styles.cardPunchLabel}>IN</Text>
+                        <View style={styles.punchLine}>
+                          <Text style={[styles.punchTime, { color: punchColor(punchLocations(record).in, office) }]}>
+                            {record.inTime}
+                          </Text>
+                          <LocationBadge location={punchLocations(record).in} office={office} compact hideWhere />
+                        </View>
+                        <LateBadge minutes={record.lateMinutes} />
+                      </View>
+                      <View style={styles.cardPunch}>
+                        <Text style={styles.cardPunchLabel}>OUT</Text>
+                        {record.outTime ? (
+                          <>
+                            <View style={styles.punchLine}>
+                              <Text style={[styles.punchTime, { color: punchColor(punchLocations(record).out, office) }]}>
+                                {record.outTime}
+                              </Text>
+                              <LocationBadge location={punchLocations(record).out} office={office} compact hideWhere />
+                            </View>
+                            <OvertimeBadge minutes={record.overtimeMinutes} />
+                          </>
+                        ) : (
+                          <View style={styles.working}>
+                            <View style={styles.workingDot} />
+                            <Text style={styles.workingText}>Working</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.cardPunch}>
+                        <Text style={styles.cardPunchLabel}>WORKED</Text>
+                        <Text style={styles.hours}>{mins != null ? formatDuration(mins) : '—'}</Text>
+                      </View>
+                    </View>
+                    {record.remark ? <Text style={styles.sub}>{record.remark}</Text> : null}
+                  </>
+                ) : (
+                  <>
+                    {record?.remark || onLeave ? (
+                      <Text style={styles.td}>
+                        {onLeave ? `${LEAVE_TYPES[onLeave.type]?.label ?? 'Leave'}: ${onLeave.reason}` : record.remark}
+                      </Text>
+                    ) : null}
+                    {record ? <PunchLocations record={record} office={office} compact /> : null}
+                  </>
+                )}
                 <View style={styles.actionsRow}>
                   {resumeEl}
                   {editEl}
@@ -447,6 +476,9 @@ const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
   badgeText: { fontSize: 12, fontWeight: '700' },
   card: { padding: 16, gap: 10 },
+  cardPunches: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  cardPunch: { gap: 4, minWidth: 90 },
+  cardPunchLabel: { fontSize: 11, fontWeight: '700', color: COLORS.body, letterSpacing: 0.3 },
   resume: {
     flexDirection: 'row',
     alignItems: 'center',
