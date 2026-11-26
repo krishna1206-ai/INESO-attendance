@@ -199,15 +199,13 @@ export default function AdminAttendance() {
                       {departmentName}
                       {subDepartmentName !== '—' ? ` · ${subDepartmentName}` : ''}
                     </Text>
+                    <EditedBadge record={record} inline />
                   </View>
                 </View>
                 <View style={styles.colOffice}>
                   <Text style={styles.officeTime}>{offDay ? '—' : officeTime}</Text>
                 </View>
-                <View style={[styles.colStatus, { gap: 6 }]}>
-                  {statusEl}
-                  {editedEl}
-                </View>
+                <View style={styles.colStatus}>{statusEl}</View>
                 {record?.inTime ? (
                   <>
                     {/* Punch in: time + Late, and where it was made */}
@@ -216,7 +214,7 @@ export default function AdminAttendance() {
                         <Text style={styles.punchTime}>{record.inTime}</Text>
                         <LateBadge minutes={record.lateMinutes} />
                       </View>
-                      <LocationBadge location={punchLocations(record).in} office={office} />
+                      <LocationBadge location={punchLocations(record).in} office={office} compact />
                     </View>
                     {/* Punch out: time + overtime (or still working), and where */}
                     <View style={[styles.colPunch, styles.punchCell]}>
@@ -226,7 +224,7 @@ export default function AdminAttendance() {
                             <Text style={styles.punchTime}>{record.outTime}</Text>
                             <OvertimeBadge minutes={record.overtimeMinutes} />
                           </View>
-                          <LocationBadge location={punchLocations(record).out} office={office} />
+                          <LocationBadge location={punchLocations(record).out} office={office} compact />
                         </>
                       ) : (
                         <View style={styles.working}>
@@ -245,7 +243,7 @@ export default function AdminAttendance() {
                         : record?.remark || '—'}
                     </Text>
                     {record && entryLocations(record).last ? (
-                      <LocationBadge location={entryLocations(record).last} office={office} />
+                      <LocationBadge location={entryLocations(record).last} office={office} compact />
                     ) : null}
                   </View>
                 )}
@@ -407,7 +405,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
   },
   thead: { backgroundColor: COLORS.pageBg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
+  tr: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
   trBorder: { borderTopWidth: 1, borderTopColor: COLORS.border },
   th: { color: COLORS.blue, fontSize: 12, fontWeight: '600', letterSpacing: 0.3 },
   colName: { flex: 2.2 },
