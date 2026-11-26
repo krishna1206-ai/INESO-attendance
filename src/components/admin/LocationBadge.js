@@ -13,18 +13,22 @@ const KIND = {
 
 // Where an attendance entry was filled in: At office / Outside office · 5.2 km / No location,
 // plus a "Map" link and a warning when the device reported a fake (mocked) location.
-export default function LocationBadge({ location, office, label, compact }) {
+// `hideWhere` drops the At office / Outside badge when something else already shows it
+// (e.g. the punch time is coloured by location), leaving the map link and fake warning.
+export default function LocationBadge({ location, office, label, compact, hideWhere }) {
   const where = classifyLocation(location, office);
   const k = KIND[where.kind];
   return (
     <View style={styles.row}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
-      <View style={[styles.badge, { backgroundColor: k.bg }]}>
-        <MaterialCommunityIcons name={k.icon} size={14} color={k.color} />
-        <Text style={[styles.text, { color: k.color }]} numberOfLines={1}>
-          {where.label}
-        </Text>
-      </View>
+      {!hideWhere ? (
+        <View style={[styles.badge, { backgroundColor: k.bg }]}>
+          <MaterialCommunityIcons name={k.icon} size={14} color={k.color} />
+          <Text style={[styles.text, { color: k.color }]} numberOfLines={1}>
+            {where.label}
+          </Text>
+        </View>
+      ) : null}
       {location?.mocked ? (
         <View style={[styles.badge, { backgroundColor: '#FFF4E0' }]}>
           <Feather name="alert-triangle" size={13} color="#9A5B00" />
