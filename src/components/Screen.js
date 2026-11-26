@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { signOut, useSession } from '../data/session';
+import ChangePasswordModal from './ChangePasswordModal';
 import { getMode } from '../lib/supabase';
 import { COLORS, MAX_CONTENT_WIDTH } from '../theme';
 
@@ -66,6 +68,7 @@ export default function Screen({ children }) {
 export function UserMenu({ name }) {
   const { width } = useWindowDimensions();
   const compact = width < 600;
+  const [passwordOpen, setPasswordOpen] = useState(false);
   return (
     <View style={styles.user}>
       {!compact ? (
@@ -76,6 +79,16 @@ export function UserMenu({ name }) {
           </Text>
         </View>
       ) : null}
+      <Pressable
+        onPress={() => setPasswordOpen(true)}
+        style={({ pressed }) => [styles.logout, styles.passwordButton, pressed && { opacity: 0.8 }]}
+        accessibilityRole="button"
+        accessibilityLabel="Change password"
+      >
+        <Feather name="key" size={15} color={COLORS.white} />
+        {!compact ? <Text style={styles.logoutText}>Password</Text> : null}
+      </Pressable>
+      <ChangePasswordModal visible={passwordOpen} onClose={() => setPasswordOpen(false)} />
       <Pressable
         onPress={async () => {
           // Logs out only this side (admin or employee); the other tab stays signed in.
@@ -123,6 +136,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
+  passwordButton: { borderColor: '#3B4A6B' },
   logoutText: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
   accentRow: { flexDirection: 'row', height: 6, marginHorizontal: -20 },
   accentOrange: { flex: 2, backgroundColor: COLORS.orange },

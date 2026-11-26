@@ -28,6 +28,7 @@ import { useCalendar } from '../../../data/calendar';
 import { useLeaveRequests } from '../../../data/leave';
 import LateBadge from '../../../components/admin/LateBadge';
 import OvertimeBadge from '../../../components/admin/OvertimeBadge';
+import EditedBadge from '../../../components/admin/EditedBadge';
 import { COLORS } from '../../../theme';
 
 const TABLE_BREAKPOINT = 1000;
@@ -145,7 +146,10 @@ export default function EmployeeReport() {
             return asTable ? (
               <View key={date} style={[styles.tr, i > 0 && styles.trBorder, !r && !off && styles.rowMissing]}>
                 <View style={styles.colDate}>{dateEl}</View>
-                <View style={styles.colStatus}>{statusEl}</View>
+                <View style={[styles.colStatus, { gap: 4 }]}>
+                  {statusEl}
+                  <EditedBadge record={r} compact />
+                </View>
                 <View style={[styles.colTime, { gap: 4 }]}>
                   <Text style={styles.td}>{times}</Text>
                   <LateBadge minutes={r?.lateMinutes} compact />
@@ -172,6 +176,7 @@ export default function EmployeeReport() {
                       <OvertimeBadge minutes={r?.overtimeMinutes} compact />
                     </View>
                     {remark ? <Text style={styles.sub}>{remark}</Text> : null}
+                    <EditedBadge record={r} />
                     {locationEl}
                   </View>
                 </View>

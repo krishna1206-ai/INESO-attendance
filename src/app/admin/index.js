@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { PageBody } from '../../components/Screen';
 import AddDepartmentModal from '../../components/AddDepartmentModal';
 import EmployeeModal from '../../components/EmployeeModal';
+import TodayOverview from '../../components/admin/TodayOverview';
 import { Avatar, Button, PageTitle, Panel } from '../../components/admin/ui';
 import { useDepartments } from '../../data/departments';
 import { addEmployee, describeEmployee, useEmployees } from '../../data/employees';
@@ -45,6 +46,8 @@ export default function AdminDashboard() {
         <Button label="Add Employee" icon="user-plus" onPress={() => setEmpFormOpen(true)} />
         <Button label="Add Department" icon="plus" variant="outline" onPress={() => setDeptFormOpen(true)} />
       </PageTitle>
+
+      <TodayOverview employees={employees} />
 
       {/* Totals */}
       <View style={[styles.stats, isWide && styles.row]}>

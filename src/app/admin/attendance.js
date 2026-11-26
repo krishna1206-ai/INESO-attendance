@@ -6,6 +6,8 @@ import { PageBody } from '../../components/Screen';
 import { Avatar, EmptyState, PageTitle } from '../../components/admin/ui';
 import LocationBadge, { PunchLocations } from '../../components/admin/LocationBadge';
 import ConfirmModal from '../../components/ConfirmModal';
+import CorrectionModal from '../../components/admin/CorrectionModal';
+import EditedBadge from '../../components/admin/EditedBadge';
 import { useDepartments } from '../../data/departments';
 import { describeEmployee, useEmployees } from '../../data/employees';
 import {
@@ -41,6 +43,8 @@ export default function AdminAttendance() {
   const [onlyOutside, setOnlyOutside] = useState(false);
   // Employee whose Out time the admin is about to remove ("Continue working").
   const [resuming, setResuming] = useState(null);
+  // { employee, date, record } while the admin is correcting a day.
+  const [correcting, setCorrecting] = useState(null);
   const { departments } = useDepartments();
   const { employees } = useEmployees();
   const { byEmployee } = useAttendanceForDate(date);
@@ -165,8 +169,21 @@ export default function AdminAttendance() {
             // Today, after punch out: the admin can reopen the day so they can punch out again.
             const resumeEl =
               date === today && record?.inTime && record?.outTime ? (
-                <ResumeButton onPress={() => setResuming({ employee: e, outTime: record.outTime })} />
+                <ActionButton
+                  icon="play-circle-outline"
+                  label="Continue working"
+                  onPress={() => setResuming({ employee: e, outTime: record.outTime })}
+                />
               ) : null;
+            // Add or fix the day (forgot to punch, phone died...).
+            const editEl = (
+              <ActionButton
+                icon={record ? 'pencil-outline' : 'plus'}
+                label={record ? 'Edit' : 'Add'}
+                onPress={() => setCorrecting({ employee: e, date, record })}
+              />
+            );
+            const editedEl = <EditedBadge record={record} compact={!asTable} />;
             const locationEl = !record ? (
               <Text style={styles.muted}>—</Text>
             ) : (
@@ -187,7 +204,10 @@ export default function AdminAttendance() {
                 <View style={styles.colOffice}>
                   <Text style={styles.officeTime}>{offDay ? '—' : officeTime}</Text>
                 </View>
-                <View style={styles.colStatus}>{statusEl}</View>
+                <View style={[styles.colStatus, { gap: 6 }]}>
+                  {statusEl}
+                  {editedEl}
+                </View>
                 {record?.inTime ? (
                   <>
                     {/* Punch in: time + Late, and where it was made */}
@@ -230,7 +250,10 @@ export default function AdminAttendance() {
                   </View>
                 )}
                 <Text style={[styles.colHours, styles.hours]}>{mins != null ? formatDuration(mins) : '—'}</Text>
-                <View style={styles.colAction}>{resumeEl}</View>
+                <View style={[styles.colAction, styles.actions]}>
+                  {resumeEl}
+                  {editEl}
+                </View>
               </View>
             ) : (
               <View key={e.id} style={[styles.card, i > 0 && styles.trBorder]}>
@@ -259,8 +282,12 @@ export default function AdminAttendance() {
                   <LateBadge minutes={record?.lateMinutes} />
                   <OvertimeBadge minutes={record?.overtimeMinutes} />
                 </View>
-                {resumeEl}
+                {editedEl}
                 {locationEl}
+                <View style={styles.actionsRow}>
+                  {resumeEl}
+                  {editEl}
+                </View>
               </View>
             );
           })}
@@ -284,20 +311,21 @@ export default function AdminAttendance() {
           setResuming(null);
         }}
       />
+      <CorrectionModal target={correcting} onClose={() => setCorrecting(null)} />
     </PageBody>
   );
 }
 
-function ResumeButton({ onPress }) {
+function ActionButton({ icon, label, onPress }) {
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.resume, pressed && { opacity: 0.8 }]}
       accessibilityRole="button"
-      accessibilityLabel="Continue working"
+      accessibilityLabel={label}
     >
-      <MaterialCommunityIcons name="play-circle-outline" size={15} color={COLORS.navy} />
-      <Text style={styles.resumeText}>Continue working</Text>
+      <MaterialCommunityIcons name={icon} size={15} color={COLORS.navy} />
+      <Text style={styles.resumeText}>{label}</Text>
     </Pressable>
   );
 }
@@ -389,7 +417,9 @@ const styles = StyleSheet.create({
   colPunch: { flex: 2 },
   colPunchBoth: { flex: 4 },
   colHours: { flex: 0.9 },
-  colAction: { width: 170, alignItems: 'flex-end' },
+  colAction: { width: 250 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8 },
+  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   punchCell: { gap: 6 },
   punchLine: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   punchTime: { fontSize: 16, fontWeight: '700', color: COLORS.text },

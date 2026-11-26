@@ -7,6 +7,7 @@ import AttendanceEntry from '../../components/attendance/AttendanceEntry';
 import { Avatar } from '../../components/admin/ui';
 import LateBadge from '../../components/admin/LateBadge';
 import OvertimeBadge from '../../components/admin/OvertimeBadge';
+import EditedBadge from '../../components/admin/EditedBadge';
 import MyLeaves from '../../components/leave/MyLeaves';
 import { useLeaveRequests } from '../../data/leave';
 import { useSession } from '../../data/session';
@@ -187,6 +188,7 @@ export default function MyAttendance() {
                       <OvertimeBadge minutes={r.overtimeMinutes} compact />
                     </View>
                   ) : null}
+                  {!r.off ? <EditedBadge record={r} compact /> : null}
                 </View>
                 <Text style={styles.rowHours}>{mins != null ? formatDuration(mins) : ''}</Text>
               </Pressable>

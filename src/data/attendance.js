@@ -214,6 +214,33 @@ export async function adminResumeWork(employeeId) {
   return call('admin_resume_work', { p_employee_id: employeeId });
 }
 
+// Admin correction: add or fix one employee's day (today or earlier). Times are 'HH:MM'
+// (24-hour); Out may be '' when they are still working. A reason is required and is shown
+// with the day as "Edited by admin".
+export async function adminSaveAttendance(employeeId, date, { status, inTime, outTime, reason }) {
+  if (!STATUS[status]) return 'Select a status.';
+  if (date > toDateKey()) return 'You can only correct today or a past day.';
+  if ((reason ?? '').trim().length < 3) return 'Please write the reason for the correction.';
+  const timed = STATUS[status].needsTime;
+  return call('admin_save_attendance', {
+    p_employee_id: employeeId,
+    p_date: date,
+    p_status: status,
+    p_in_time: timed ? normaliseTime(inTime) : '',
+    p_out_time: timed ? normaliseTime(outTime) : '',
+    p_reason: reason.trim(),
+  });
+}
+
+// '9:5' / '9.05' / '0905' -> '09:05'. Anything else is passed through for the server to reject.
+export function normaliseTime(text) {
+  const t = (text ?? '').trim();
+  if (!t) return '';
+  const m = t.match(/^(\d{1,2})[:.](\d{1,2})$/) || t.match(/^(\d{2})(\d{2})$/);
+  if (!m) return t;
+  return `${m[1].padStart(2, '0')}:${m[2].padStart(2, '0')}`;
+}
+
 export async function clearAttendance(employeeId, date) {
   if (!isEditableDate(date)) return "Only today's attendance can be changed.";
   return call('clear_attendance', {});
@@ -250,7 +277,7 @@ export function punchedOutsideOffice(record, classify) {
 // Reading
 
 const COLUMNS =
-  'id, employee_id, date, status, in_time, out_time, in_at, out_at, late_minutes, overtime_minutes, remark, locations, updated_at';
+  'id, employee_id, date, status, in_time, out_time, in_at, out_at, late_minutes, overtime_minutes, remark, locations, edited_at, edited_reason, updated_at';
 
 function mapRow(r) {
   return {
@@ -266,6 +293,9 @@ function mapRow(r) {
     outAt: r.out_at,
     remark: r.remark,
     locations: Array.isArray(r.locations) ? r.locations : [],
+    // Set when the admin corrected this day.
+    editedAt: r.edited_at ?? null,
+    editedReason: r.edited_reason ?? '',
     updatedAt: r.updated_at,
   };
 }
